@@ -3,6 +3,7 @@ import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import clsx from "clsx";
 import LoadingModal from "../modal/LoadingModal";
 import type { NodeData } from "../../types";
+import { getComponent } from "./ComponentRegistry";
 
 export type DefaultNodeType = Node<NodeData>;
 
@@ -33,6 +34,24 @@ const ROW_H = Math.max(TEXT_LINE_H + TEXT_DESCENDER_PAD, DOT_DIAM);
 const ROW_GAP = Math.max(0, PORT_SPACING - ROW_H); // => ROW_H + ROW_GAP = PORT_SPACING
 
 export default function DefaultNode(props: NodeProps & { data: NodeData }) {
+  // Check if this is a special component type
+  const componentType = props.data?.componentType;
+  if (componentType) {
+    const SpecialComponent = getComponent(componentType);
+    if (SpecialComponent) {
+      return <SpecialComponent {...props} />;
+    }
+  }
+  
+  // Legacy support: Check title for backward compatibility
+  if (props.data?.title?.startsWith("Text Input")) {
+    const TextInputComponent = getComponent('TextInput');
+    if (TextInputComponent) {
+      return <TextInputComponent {...props} />;
+    }
+  }
+  
+  // Default rendering for standard custom nodes
   const [hovering, setHovering] = useState(false);
   const [modalState, setModalState] = useState<{
     isOpen: boolean;

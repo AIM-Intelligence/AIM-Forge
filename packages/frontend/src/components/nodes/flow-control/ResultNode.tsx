@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import clsx from "clsx";
 import { useParams } from "react-router-dom";
-import { useExecutionStore } from "../../stores/executionStore";
+import { useExecutionStore } from "../../../stores/executionStore";
 
 export type ResultNodeType = Node<{
   title: string;
@@ -21,6 +21,22 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
   const setNodeResult = useExecutionStore((state) => state.setNodeResult);
   const runId = useExecutionStore((state) => state.runId);
   const executionResults = useExecutionStore((state) => state.executionResults);
+
+  // Load saved dimensions from localStorage on mount
+  useEffect(() => {
+    if (projectId) {
+      const dimensionsKey = `result_dimensions_${projectId}_${props.id}`;
+      const savedDimensions = localStorage.getItem(dimensionsKey);
+      if (savedDimensions) {
+        try {
+          const parsed = JSON.parse(savedDimensions);
+          setDimensions(parsed);
+        } catch (e) {
+          console.error("Failed to parse saved dimensions:", e);
+        }
+      }
+    }
+  }, [projectId, props.id]);
 
   // Update text when execution results change
   useEffect(() => {
@@ -65,6 +81,12 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
 
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
+    
+    // Clear localStorage dimensions when deleting
+    if (projectId) {
+      const dimensionsKey = `result_dimensions_${projectId}_${props.id}`;
+      localStorage.removeItem(dimensionsKey);
+    }
     // 부모 컴포넌트에서 처리하도록 이벤트 전달
     const deleteEvent = new CustomEvent("deleteNode", {
       detail: { id: props.id },
@@ -150,11 +172,14 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
     const startWidth = dimensions.width;
     const startHeight = dimensions.height;
 
+    let finalWidth = startWidth;
+    let finalHeight = startHeight;
+
     const handleMouseMove = (e: MouseEvent) => {
-      const newWidth = Math.min(900, Math.max(50, startWidth + e.clientX - startX));
-      const newHeight = Math.min(600, Math.max(50, startHeight + e.clientY - startY));
+      finalWidth = Math.min(900, Math.max(50, startWidth + e.clientX - startX));
+      finalHeight = Math.min(600, Math.max(50, startHeight + e.clientY - startY));
       
-      setDimensions({ width: newWidth, height: newHeight });
+      setDimensions({ width: finalWidth, height: finalHeight });
     };
 
     const handleMouseUp = () => {
@@ -162,6 +187,12 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
       document.body.style.cursor = '';
+      
+      // Save final dimensions to localStorage
+      if (projectId) {
+        const dimensionsKey = `result_dimensions_${projectId}_${props.id}`;
+        localStorage.setItem(dimensionsKey, JSON.stringify({ width: finalWidth, height: finalHeight }));
+      }
     };
 
     document.addEventListener('mousemove', handleMouseMove);

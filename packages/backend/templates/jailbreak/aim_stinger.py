@@ -36,7 +36,8 @@ def RunScript(
     Returns:
         Dictionary containing attack results and status
     """
-
+    print(f"[AIM-Stinger] Received api_key: {repr(api_key)}, type: {type(api_key)}")
+    
     try:
         import requests
     except ImportError:

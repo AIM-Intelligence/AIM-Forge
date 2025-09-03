@@ -1,7 +1,14 @@
 /**
  * Component Library Configuration
- * Defines available components that can be added to the flow
+ * Dynamically builds component library from category index files
  */
+
+import { flowControlComponents } from '../components/nodes/flow-control';
+import { paramsComponents } from '../components/nodes/params';
+import { inputsComponents } from '../components/nodes/inputs';
+import { dataopsComponents } from '../components/nodes/dataops';
+import { jailbreakComponents } from '../components/nodes/jailbreak';
+import { reportsComponents } from '../components/nodes/reports';
 
 export interface ComponentTemplate {
   id: string;
@@ -9,8 +16,9 @@ export interface ComponentTemplate {
   description: string;
   icon: string;
   template: string;  // Template file name in backend
-  category: string;
-  nodeType?: "custom" | "start" | "result";
+  category?: string;
+  nodeType?: "custom" | "start" | "result" | "textInput";
+  componentType?: string;  // For extensible component system
 }
 
 export interface ComponentCategory {
@@ -20,81 +28,45 @@ export interface ComponentCategory {
   components: ComponentTemplate[];
 }
 
+// Build component library from category exports
 export const componentLibrary: ComponentCategory[] = [
   {
     id: "flow-control",
     name: "Flow Control",
     icon: "🎮",
-    components: [
-      {
-        id: "start-node",
-        name: "Start Node",
-        description: "Entry point for flow execution",
-        icon: "▶️",
-        template: "start_node",
-        category: "flow-control",
-        nodeType: "start",
-      },
-      {
-        id: "result-node",
-        name: "Result Node",
-        description: "Display execution results",
-        icon: "📊",
-        template: "result_node",
-        category: "flow-control",
-        nodeType: "result",
-      },
-      {
-        id: "custom-node",
-        name: "Custom Node",
-        description: "Blank Python node for custom logic",
-        icon: "📝",
-        template: "custom_node",
-        category: "flow-control",
-        nodeType: "custom",
-      },
-    ],
+    components: flowControlComponents.map(c => ({ ...c, category: "flow-control" })),
   },
   {
-    id: "aim-inputs",
-    name: "AIM Inputs",
+    id: "params",
+    name: "Parameters",
+    icon: "⚙️",
+    components: paramsComponents.map(c => ({ ...c, category: "params" })),
+  },
+  {
+    id: "inputs",
+    name: "Inputs",
     icon: "📥",
-    components: [
-      {
-        id: "csv-loader",
-        name: "CSV Loader",
-        description: "Load CSV files from local filesystem",
-        icon: "📁",
-        template: "csv_loader",
-        category: "aim-inputs",
-      },
-  
-    ],
+    components: inputsComponents.map(c => ({ ...c, category: "inputs" })),
   },
   {
-    id: "aim-attacks",
-    name: "AIM Attacks",
-    icon: "⚔️",
-    components: [
-      {
-        id: "gcg-attack",
-        name: "GCG Attack",
-        description: "Greedy Coordinate Gradient attack",
-        icon: "🎯",
-        template: "gcg_attack",
-        category: "aim-attacks",
-      },
-      {
-        id: "aim-stinger",
-        name: "AIM Stinger",
-        description: "Multi-turn jailbreak attack via external API",
-        icon: "🐝",
-        template: "aim_stinger",
-        category: "aim-attacks",
-      },
-    ],
+    id: "dataops",
+    name: "Data Operations",
+    icon: "🔄",
+    components: dataopsComponents.map(c => ({ ...c, category: "dataops" })),
   },
-];
+  {
+    id: "jailbreak",
+    name: "Jailbreak",
+    icon: "⚔️",
+    components: jailbreakComponents.map(c => ({ ...c, category: "jailbreak" })),
+  },
+  {
+    id: "reports",
+    name: "Reports",
+    icon: "📊",
+    components: reportsComponents.map(c => ({ ...c, category: "reports" })),
+  },
+].filter(category => category.components.length > 0); // Only show categories with components
 
 // Helper function to get component by template name
 export function getComponentByTemplate(templateName: string): ComponentTemplate | undefined {

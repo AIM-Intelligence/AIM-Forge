@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import clsx from "clsx";
-import { useExecutionStore } from "../../stores/executionStore";
+import { useExecutionStore } from "../../../stores/executionStore";
 import { useParams } from "react-router-dom";
-import { projectApi } from "../../utils/api";
-import LoadingModal from "../modal/LoadingModal";
+import { projectApi } from "../../../utils/api";
+import LoadingModal from "../../modal/LoadingModal";
 
 // Define ExecutionResult interface locally
 interface ExecutionResult {

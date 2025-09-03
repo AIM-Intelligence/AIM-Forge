@@ -49,6 +49,49 @@ class EnhancedFlowExecutor(FlowExecutor):
                 "logs": "Start node - flow initiated",
             }
         
+        # Handle textInput nodes - check componentType first, then legacy title check
+        component_type = node_data.get("data", {}).get("componentType", "")
+        is_text_input = (
+            node_type == "textInput" or 
+            component_type == "TextInput" or
+            (node_type == "custom" and node_data.get("data", {}).get("title", "").startswith("Text Input"))
+        )
+        
+        if is_text_input:
+            # TextInput nodes always use their stored value from localStorage (passed via result_node_values)
+            stored_value = result_node_values.get(node_id) if result_node_values else None
+            
+            # Frontend sends the value directly as a string (not wrapped)
+            # But if it comes as dict for some reason, unwrap it
+            if isinstance(stored_value, dict):
+                # Could be {'value': actual_value} or {'display': ..., 'raw_value': ...}
+                if 'value' in stored_value:
+                    stored_value = stored_value['value']
+                elif 'raw_value' in stored_value:
+                    stored_value = stored_value['raw_value']
+                elif 'display' in stored_value:
+                    stored_value = stored_value['display']
+            
+            print(f"[TEXTINPUT NODE {node_id}] Final stored value: {repr(stored_value)}, Type: {type(stored_value)}")
+            
+            if stored_value is not None and stored_value != "":
+                # Return the stored value directly as a string (not wrapped in dict)
+                # This allows it to be used directly as parameter values
+                return {
+                    "status": "success",
+                    "output": stored_value,  # Direct string value, not wrapped
+                    "execution_time_ms": 0,
+                    "logs": "Text Input node - using stored value",
+                }
+            else:
+                # No stored value, return empty string
+                return {
+                    "status": "success", 
+                    "output": "",  # Empty string, not wrapped
+                    "execution_time_ms": 0,
+                    "logs": "Text Input node - no stored value",
+                }
+        
         # Handle result nodes
         if node_type == "result":
             # Check if this Result node has a stored value (user typed text)
@@ -134,6 +177,7 @@ class EnhancedFlowExecutor(FlowExecutor):
             # 2. If we have target handle information, restructure input for RunScript
             # Check if input_data already has handle names as keys (from multi-input scenario)
             # In that case, it's already properly structured and we don't need to restructure
+            print(f"[NODE {node_id}] Actual input before handle processing: {actual_input}")
             if target_handles and isinstance(actual_input, dict):
                 # Check if the keys are already handle names (not source IDs)
                 handle_values = set(target_handles.values())
@@ -804,8 +848,11 @@ class EnhancedFlowExecutor(FlowExecutor):
         }
         
         # Execute nodes in order
+        print(f"[EXECUTION] Order: {execution_order}")
+        print(f"[EXECUTION] Result node values: {result_node_values}")
         for idx, node_id in enumerate(execution_order):
             node_data = nodes[node_id]
+            print(f"[EXECUTION] Executing node {node_id}, type: {node_data.get('type')}")
             
             # Prepare input data
             input_data = None

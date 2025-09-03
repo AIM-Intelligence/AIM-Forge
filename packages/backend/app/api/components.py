@@ -25,6 +25,7 @@ class CreateFromTemplateRequest(BaseModel):
     template_name: str
     title: str
     description: Optional[str] = ""
+    component_type: Optional[str] = None
 
 class ComponentLibraryResponse(BaseModel):
     success: bool
@@ -36,29 +37,64 @@ async def get_component_library():
     try:
         templates = []
         
-        # List all template files
+        # Define category folders
+        categories = ["flow_control", "params", "inputs", "dataops", "jailbreak", "reports"]
+        
+        # List all template files from category folders
         if TEMPLATES_DIR.exists():
+            # First, get templates from root (legacy)
             for template_file in TEMPLATES_DIR.glob("*.py"):
-                template_name = template_file.stem
-                
-                # Read first few lines to get description
-                with open(template_file, 'r') as f:
-                    lines = f.readlines()
-                    description = ""
-                    for line in lines[:10]:
-                        if line.strip().startswith('"""'):
-                            continue
-                        if '"""' in line:
-                            break
-                        if line.strip():
-                            description = line.strip()
-                            break
-                
-                templates.append({
-                    "name": template_name,
-                    "description": description,
-                    "file": template_file.name
-                })
+                if not template_file.name.startswith("__"):
+                    template_name = template_file.stem
+                    
+                    # Read first few lines to get description
+                    with open(template_file, 'r') as f:
+                        lines = f.readlines()
+                        description = ""
+                        for line in lines[:10]:
+                            if line.strip().startswith('"""'):
+                                continue
+                            if '"""' in line:
+                                break
+                            if line.strip():
+                                description = line.strip()
+                                break
+                    
+                    templates.append({
+                        "name": template_name,
+                        "description": description,
+                        "file": template_file.name,
+                        "category": "general"
+                    })
+            
+            # Then, get templates from category folders
+            for category in categories:
+                category_dir = TEMPLATES_DIR / category
+                if category_dir.exists():
+                    for template_file in category_dir.glob("*.py"):
+                        if not template_file.name.startswith("__"):
+                            template_name = template_file.stem
+                            
+                            # Read first few lines to get description
+                            with open(template_file, 'r') as f:
+                                lines = f.readlines()
+                                description = ""
+                                for line in lines[:10]:
+                                    if line.strip().startswith('"""'):
+                                        continue
+                                    if '"""' in line:
+                                        break
+                                    if line.strip():
+                                        description = line.strip()
+                                        break
+                            
+                            templates.append({
+                                "name": template_name,
+                                "description": description,
+                                "file": template_file.name,
+                                "category": category,
+                                "path": f"{category}/{template_file.name}"
+                            })
         
         return {
             "success": True,
@@ -77,9 +113,28 @@ async def create_node_from_template(request: CreateFromTemplateRequest):
         if not project_dir.exists():
             raise HTTPException(status_code=404, detail="Project not found")
         
-        # Get template file
-        template_file = TEMPLATES_DIR / f"{request.template_name}.py"
-        if not template_file.exists():
+        # Get template file - check in category folders first, then root
+        template_file = None
+        
+        # Check if template_name includes category path
+        if "/" in request.template_name:
+            template_file = TEMPLATES_DIR / f"{request.template_name}.py"
+        else:
+            # Search in category folders
+            categories = ["flow_control", "params", "inputs", "dataops", "jailbreak", "reports"]
+            for category in categories:
+                potential_file = TEMPLATES_DIR / category / f"{request.template_name}.py"
+                if potential_file.exists():
+                    template_file = potential_file
+                    break
+            
+            # If not found in categories, check root
+            if not template_file:
+                potential_file = TEMPLATES_DIR / f"{request.template_name}.py"
+                if potential_file.exists():
+                    template_file = potential_file
+        
+        if not template_file or not template_file.exists():
             raise HTTPException(status_code=404, detail=f"Template '{request.template_name}' not found")
         
         # Create node file name
@@ -100,21 +155,29 @@ async def create_node_from_template(request: CreateFromTemplateRequest):
         
         # Determine node type based on template
         node_type = "custom"
-        if "start" in request.template_name.lower():
+        template_base = request.template_name.split("/")[-1] if "/" in request.template_name else request.template_name
+        if "start" in template_base.lower():
             node_type = "start"
-        elif "result" in request.template_name.lower():
+        elif "result" in template_base.lower():
             node_type = "result"
+        
+        # Build node data
+        node_data = {
+            "title": request.title,
+            "description": request.description or f"Created from {template_base} template",
+            "file": node_file_name
+        }
+        
+        # Add componentType if provided
+        if request.component_type:
+            node_data["componentType"] = request.component_type
         
         # Add node to structure
         new_node = {
             "id": request.node_id,
             "type": node_type,
             "position": {"x": 250, "y": 100},  # Default position
-            "data": {
-                "title": request.title,
-                "description": request.description or f"Created from {request.template_name} template",
-                "file": node_file_name
-            }
+            "data": node_data
         }
         
         # Check if node already exists
@@ -142,12 +205,32 @@ async def create_node_from_template(request: CreateFromTemplateRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/template/{template_name}")
+@router.get("/template/{template_name:path}")
 async def get_template_code(template_name: str):
     """Get the code content of a specific template"""
     try:
-        template_file = TEMPLATES_DIR / f"{template_name}.py"
-        if not template_file.exists():
+        # Handle both category/template and direct template names
+        template_file = None
+        
+        # Check if template_name includes category path
+        if "/" in template_name:
+            template_file = TEMPLATES_DIR / f"{template_name}.py"
+        else:
+            # Search in category folders
+            categories = ["flow_control", "params", "inputs", "dataops", "jailbreak", "reports"]
+            for category in categories:
+                potential_file = TEMPLATES_DIR / category / f"{template_name}.py"
+                if potential_file.exists():
+                    template_file = potential_file
+                    break
+            
+            # If not found in categories, check root
+            if not template_file:
+                potential_file = TEMPLATES_DIR / f"{template_name}.py"
+                if potential_file.exists():
+                    template_file = potential_file
+        
+        if not template_file or not template_file.exists():
             raise HTTPException(status_code=404, detail=f"Template '{template_name}' not found")
         
         with open(template_file, 'r') as f:

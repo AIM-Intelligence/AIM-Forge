@@ -109,6 +109,7 @@ export default function Project() {
             template_name: component.template,
             title: component.name,
             description: component.description,
+            component_type: component.componentType, // Pass componentType if present
           }),
         });
 
@@ -173,6 +174,7 @@ export default function Project() {
               viewCode: () => handleNodeClick(newNodeId, component.name, result.file_name || `${newNodeId}_${component.name.replace(/\s+/g, '_')}.py`),
               inputs: inputs,
               outputs: outputs,
+              componentType: component.componentType,  // Add componentType for extensible rendering
             }
           };
           
