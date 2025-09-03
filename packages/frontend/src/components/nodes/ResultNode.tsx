@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import clsx from "clsx";
+import { useParams } from "react-router-dom";
 import { useExecutionStore } from "../../stores/executionStore";
 
 export type ResultNodeType = Node<{
@@ -15,6 +16,7 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
   const [isResizing, setIsResizing] = useState(false);
   const [userText, setUserText] = useState<string>("");
   const nodeRef = useRef<HTMLDivElement>(null);
+  const { projectId } = useParams<{ projectId: string }>();
   const getNodeResult = useExecutionStore((state) => state.getNodeResult);
   const setNodeResult = useExecutionStore((state) => state.setNodeResult);
   const runId = useExecutionStore((state) => state.runId);
@@ -24,8 +26,22 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
   useEffect(() => {
     const result = getNodeResult(props.id);
     if (result !== null && result !== undefined) {
-      // The result is now the actual value directly from the previous node
-      const displayValue = result;
+      // Check if result has the new format with display and full_ref
+      let displayValue = result;
+      
+      if (typeof result === "object" && result !== null && "display" in result) {
+        // New format with separate display and full data
+        displayValue = result.display;
+        // Store the full reference for download
+        (nodeRef.current as any)._fullDataRef = result.full_ref;
+        (nodeRef.current as any)._rawValue = result.raw_value;
+        (nodeRef.current as any)._isTruncated = result.is_truncated;
+      } else {
+        // Old format or direct value
+        (nodeRef.current as any)._fullDataRef = null;
+        (nodeRef.current as any)._rawValue = result;
+        (nodeRef.current as any)._isTruncated = false;
+      }
 
       // Format result for display
       let preview = "";
@@ -34,10 +50,7 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
       } else {
         preview = String(displayValue);
       }
-      // Limit preview length
-      if (preview.length > 1500) {
-        preview = preview.substring(0, 1500) + "...";
-      }
+      // Already truncated by backend if needed
       setUserText(preview);
     }
   }, [executionResults, props.id, getNodeResult]);
@@ -60,13 +73,44 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
     e.currentTarget.dispatchEvent(deleteEvent);
   };
 
-  const handleGetResult = (e: React.MouseEvent) => {
+  const handleGetResult = async (e: React.MouseEvent) => {
     e.stopPropagation();
 
-    // Use current text (either from user input or execution)
-    const currentValue = userText || "";
+    // Check if we have truncated data and need to fetch full data
+    const isTruncated = (nodeRef.current as any)?._isTruncated;
+    const fullDataRef = (nodeRef.current as any)?._fullDataRef;
+    const rawValue = (nodeRef.current as any)?._rawValue;
+    
+    let fullData = userText || "";
+    
+    // If truncated and has reference, fetch full data from backend
+    if (isTruncated && fullDataRef) {
+      try {
+        const response = await fetch(`/api/project/${projectId}/node/${props.id}/full-result`);
+        const result = await response.json();
+        
+        if (result.success) {
+          // Format the full data
+          if (typeof result.data === "object") {
+            fullData = JSON.stringify(result.data, null, 2);
+          } else {
+            fullData = String(result.data);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch full data:", error);
+        // Fall back to displayed text
+      }
+    } else if (rawValue !== undefined && rawValue !== null) {
+      // Use raw value if available
+      if (typeof rawValue === "object") {
+        fullData = JSON.stringify(rawValue, null, 2);
+      } else {
+        fullData = String(rawValue);
+      }
+    }
 
-    if (!currentValue) {
+    if (!fullData) {
       alert("No content to download.");
       return;
     }
@@ -78,7 +122,8 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
       project_title: props.data.projectTitle,
       run_id: runId,
       timestamp: new Date().toISOString(),
-      result: currentValue,
+      is_truncated_display: isTruncated,
+      result: fullData,
     };
 
     // Create and download JSON file

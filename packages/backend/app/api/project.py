@@ -425,3 +425,30 @@ async def update_edge(request: dict):
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to update edge: {str(e)}")
+
+@router.get("/{project_id}/node/{node_id}/full-result")
+async def get_full_node_result(project_id: str, node_id: str):
+    """Get the full result data for a node (not truncated)"""
+    try:
+        executor = get_executor()
+        
+        # Check if there's a reference in the object store
+        if project_id in executor.object_stores:
+            # Look for the node's result in object store
+            for ref_id, data in executor.object_stores[project_id].items():
+                if ref_id.startswith(f"{node_id}_"):
+                    return {
+                        "success": True,
+                        "data": data,
+                        "node_id": node_id
+                    }
+        
+        # If no reference found, return error
+        return {
+            "success": False,
+            "error": "No full data available for this node",
+            "node_id": node_id
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get full result: {str(e)}")

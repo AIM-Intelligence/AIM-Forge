@@ -65,10 +65,61 @@ class EnhancedFlowExecutor(FlowExecutor):
                 }
             else:
                 # No stored value, pass through input
-                actual_input = self._unwrap_input(project_id, input_data)
+                print(f"[RESULT NODE {node_id}] Received input_data: {str(input_data)[:200]}")
+                print(f"[RESULT NODE {node_id}] Input type: {type(input_data)}")
+                
+                # Prepare both display and full data
+                display_output = input_data
+                full_data_ref = None
+                
+                # Handle reference objects specially for Result nodes
+                if isinstance(input_data, dict) and input_data.get("type") == "reference":
+                    # Store the reference for full data access
+                    full_data_ref = input_data.get("ref")
+                    
+                    # Unwrap the reference to get actual value
+                    unwrapped = self._unwrap_input(project_id, input_data)
+                    
+                    # Apply size limit to prevent huge outputs
+                    if isinstance(unwrapped, str):
+                        display_output = unwrapped[:1500] + ("..." if len(unwrapped) > 1500 else "")
+                    elif isinstance(unwrapped, (dict, list)):
+                        # Convert to JSON for readable display
+                        import json
+                        try:
+                            json_str = json.dumps(unwrapped, indent=2)
+                            display_output = json_str[:1500] + ("..." if len(json_str) > 1500 else "")
+                        except:
+                            # Fallback to string representation
+                            display_output = str(unwrapped)[:1500]
+                    else:
+                        display_output = str(unwrapped)[:1500]
+                else:
+                    # Not a reference, check if it needs truncation
+                    if isinstance(input_data, str) and len(input_data) > 1500:
+                        display_output = input_data[:1500] + "..."
+                    elif isinstance(input_data, (dict, list)):
+                        import json
+                        try:
+                            json_str = json.dumps(input_data, indent=2)
+                            if len(json_str) > 1500:
+                                display_output = json_str[:1500] + "..."
+                            else:
+                                display_output = json_str
+                        except:
+                            display_output = str(input_data)[:1500]
+                    
+                # Store both display and reference in output
+                output_data = {
+                    "display": display_output,  # For display in UI
+                    "full_ref": full_data_ref,  # Reference for full data (if exists)
+                    "is_truncated": isinstance(display_output, str) and display_output.endswith("..."),
+                    "raw_value": input_data if not isinstance(input_data, dict) or input_data.get("type") != "reference" else None
+                }
+                    
                 return {
                     "status": "success",
-                    "output": actual_input,  # Pass through the actual value
+                    "output": output_data,
                     "execution_time_ms": 0,
                     "logs": "Result node - displaying input data",
                 }
@@ -594,12 +645,17 @@ class EnhancedFlowExecutor(FlowExecutor):
                         source = edge_info["source"]
                         source_output = node_outputs[source]
                         
+                        # Check if source_output is a reference and unwrap it first
+                        source_output_unwrapped = source_output
+                        if isinstance(source_output, dict) and source_output.get("type") == "reference":
+                            source_output_unwrapped = self._unwrap_input(project_id, source_output)
+                        
                         # Extract value based on sourceHandle
-                        value = source_output
-                        if isinstance(source_output, dict) and edge_info["sourceHandle"]:
+                        value = source_output_unwrapped
+                        if isinstance(source_output_unwrapped, dict) and edge_info["sourceHandle"]:
                             # Extract specific output from dict
-                            if edge_info["sourceHandle"] in source_output:
-                                value = source_output[edge_info["sourceHandle"]]
+                            if edge_info["sourceHandle"] in source_output_unwrapped:
+                                value = source_output_unwrapped[edge_info["sourceHandle"]]
                         
                         # If targetHandle is specified, wrap in dict with handle as key
                         if edge_info["targetHandle"]:
@@ -773,11 +829,23 @@ class EnhancedFlowExecutor(FlowExecutor):
                     source = edge_info["source"]
                     source_output = node_outputs[source]
                     
+                    # Check if source_output is a reference and unwrap it first
+                    source_output_unwrapped = source_output
+                    if isinstance(source_output, dict) and source_output.get("type") == "reference":
+                        print(f"[CHECK] Source output is reference, unwrapping...")
+                        source_output_unwrapped = self._unwrap_input(project_id, source_output)
+                    
                     # Extract value based on sourceHandle
-                    value = source_output
-                    if isinstance(source_output, dict) and edge_info["sourceHandle"]:
-                        if edge_info["sourceHandle"] in source_output:
-                            value = source_output[edge_info["sourceHandle"]]
+                    value = source_output_unwrapped
+                    if isinstance(source_output_unwrapped, dict) and edge_info["sourceHandle"]:
+                        print(f"[CHECK] node={node_id}, sourceHandle={edge_info['sourceHandle']}, keys={list(source_output_unwrapped.keys())[:10]}")
+                        if edge_info["sourceHandle"] in source_output_unwrapped:
+                            value = source_output_unwrapped[edge_info["sourceHandle"]]
+                            print(f"[CHECK] Successfully extracted '{edge_info['sourceHandle']}': {str(value)[:100]}")
+                        else:
+                            print(f"[CHECK] sourceHandle '{edge_info['sourceHandle']}' not found in output")
+                    else:
+                        print(f"[CHECK] No extraction: type={type(source_output_unwrapped)}, sourceHandle={edge_info.get('sourceHandle')}")
                     
                     # If targetHandle is specified, wrap in dict
                     if edge_info["targetHandle"]:
