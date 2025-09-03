@@ -84,6 +84,14 @@ export const componentLibrary: ComponentCategory[] = [
         template: "gcg_attack",
         category: "aim-attacks",
       },
+      {
+        id: "aim-stinger",
+        name: "AIM Stinger",
+        description: "Multi-turn jailbreak attack via external API",
+        icon: "🐝",
+        template: "aim_stinger",
+        category: "aim-attacks",
+      },
     ],
   },
 ];
