@@ -42,44 +42,32 @@ def RunScript(
     except ImportError:
         return {
             "success": False,
-            "results": None,
             "session_id": None,
+            "results": None,
             "run_id": None,
             "lowest_score": None,
-            "success_detected": None,
-            "total_turns": None,
-            "error": "requests library not available. Please install: pip install requests",
-            "error_details": {"type": "import_error"},
+            "error": "requests library not available. Please install: pip install requests"
         }
 
     # Validate required inputs
     if not base_query:
         return {
             "success": False,
-            "results": None,
             "session_id": None,
+            "results": None,
             "run_id": None,
             "lowest_score": None,
-            "success_detected": None,
-            "total_turns": None,
-            "error": "base_query is required",
-            "error_details": {"type": "validation_error"},
+            "error": "base_query is required"
         }
 
     if not api_key and "openai" in target_endpoint.lower():
         return {
             "success": False,
-            "results": None,
             "session_id": None,
+            "results": None,
             "run_id": None,
             "lowest_score": None,
-            "success_detected": None,
-            "total_turns": None,
-            "error": "api_key is required for OpenAI models",
-            "error_details": {
-                "type": "validation_error",
-                "target_endpoint": target_endpoint,
-            },
+            "error": f"api_key is required for OpenAI models (endpoint: {target_endpoint})"
         }
 
     # Construct the attack payload
@@ -114,108 +102,71 @@ def RunScript(
         # Log the raw response for debugging
         print(f"[AIM-Stinger] Raw API response keys: {list(result.keys())}")
 
-        # Return structured response with consistent fields
+        # Extract data based on actual API structure
+        # API returns: {session_id: "...", results: {results: [...], run_id: "...", lowest_score: ...}}
+        results_data = result.get("results", {})
+        
+        # Return structured response matching actual API
         return {
             "success": True,
-            "results": result.get("results"),
             "session_id": result.get("session_id"),
-            "run_id": result.get("run_id"),
-            "lowest_score": result.get("lowest_score"),
-            "success_detected": result.get("success_detected"),
-            "total_turns": result.get("total_turns"),
-            "error": None,
-            "error_details": None,
+            "results": results_data.get("results", []),  # Array of turn results
+            "run_id": results_data.get("run_id"),
+            "lowest_score": results_data.get("lowest_score"),
+            "error": None
         }
 
     except requests.exceptions.Timeout:
         return {
             "success": False,
-            "results": None,
             "session_id": None,
+            "results": None,
             "run_id": None,
             "lowest_score": None,
-            "success_detected": None,
-            "total_turns": None,
-            "error": f"Request timed out after {timeout} seconds",
-            "error_details": {"type": "timeout", "base_query": base_query},
+            "error": f"Request timed out after {timeout} seconds (query: {base_query[:50]}...)"
         }
     except requests.exceptions.HTTPError as e:
         return {
             "success": False,
-            "results": None,
             "session_id": None,
+            "results": None,
             "run_id": None,
             "lowest_score": None,
-            "success_detected": None,
-            "total_turns": None,
-            "error": f"HTTP error: {e.response.status_code} - {e.response.text[:200]}",
-            "error_details": {
-                "type": "http_error",
-                "status_code": e.response.status_code,
-                "base_query": base_query,
-            },
+            "error": f"HTTP error: {e.response.status_code} - {e.response.text[:200]}"
         }
     except requests.exceptions.ConnectionError:
         return {
             "success": False,
-            "results": None,
             "session_id": None,
+            "results": None,
             "run_id": None,
             "lowest_score": None,
-            "success_detected": None,
-            "total_turns": None,
-            "error": f"Failed to connect to {api_endpoint}",
-            "error_details": {
-                "type": "connection_error",
-                "endpoint": api_endpoint,
-                "base_query": base_query,
-            },
+            "error": f"Failed to connect to {api_endpoint}"
         }
     except requests.exceptions.RequestException as e:
         return {
             "success": False,
-            "results": None,
             "session_id": None,
+            "results": None,
             "run_id": None,
             "lowest_score": None,
-            "success_detected": None,
-            "total_turns": None,
-            "error": f"Request failed: {str(e)}",
-            "error_details": {
-                "type": "request_error",
-                "message": str(e),
-                "base_query": base_query,
-            },
+            "error": f"Request failed: {str(e)}"
         }
     except json.JSONDecodeError as e:
         return {
             "success": False,
-            "results": None,
             "session_id": None,
+            "results": None,
             "run_id": None,
             "lowest_score": None,
-            "success_detected": None,
-            "total_turns": None,
-            "error": f"Failed to parse API response: {str(e)}",
-            "error_details": {
-                "type": "json_error",
-                "message": str(e),
-                "base_query": base_query,
-            },
+            "error": f"Failed to parse API response: {str(e)}"
         }
     except Exception as e:
         return {
             "success": False,
-            "results": None,
             "session_id": None,
+            "results": None,
             "run_id": None,
             "lowest_score": None,
-            "success_detected": None,
-            "total_turns": None,
-            "error": f"Unexpected error: {str(e)}",
-            "error_details": {
-                "type": "unexpected_error",
-                "message": str(e),
-                "base_query": base_query,
-            },
+            "error": f"Unexpected error: {str(e)}"
         }

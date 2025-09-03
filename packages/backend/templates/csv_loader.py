@@ -27,8 +27,8 @@ def RunScript(
 
     csv_path = Path(file_path)
 
-    # Load CSV using AIM-RedLab
-    loader = CSVUpload(name=csv_path.stem, has_header=has_header)
+    # Load CSV using AIM-RedLab with auto encoding detection for Korean support
+    loader = CSVUpload(name=csv_path.stem, has_header=has_header, auto_detect=True)
 
     # Load the data
     data = loader.load(csv_path)

@@ -87,7 +87,7 @@ class EnhancedFlowExecutor(FlowExecutor):
                         # Convert to JSON for readable display
                         import json
                         try:
-                            json_str = json.dumps(unwrapped, indent=2)
+                            json_str = json.dumps(unwrapped, indent=2, ensure_ascii=False)
                             display_output = json_str[:1500] + ("..." if len(json_str) > 1500 else "")
                         except:
                             # Fallback to string representation
@@ -101,7 +101,7 @@ class EnhancedFlowExecutor(FlowExecutor):
                     elif isinstance(input_data, (dict, list)):
                         import json
                         try:
-                            json_str = json.dumps(input_data, indent=2)
+                            json_str = json.dumps(input_data, indent=2, ensure_ascii=False)
                             if len(json_str) > 1500:
                                 display_output = json_str[:1500] + "..."
                             else:
