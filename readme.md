@@ -1,309 +1,118 @@
-# AIM-RED Toolkit
+# AIM-Forge
 
-A visual flow-based Python IDE with VS Code-level development experience through Language Server Protocol (LSP) integration. Build, connect, and execute Python code nodes in an intuitive visual environment with real-time code intelligence.
+비주얼 플로우 기반의 Python IDE - 노드를 연결하여 코드를 시각적으로 실행하고, Language Server Protocol(LSP)을 통해 VS Code 수준의 개발 경험을 제공합니다.
 
-## Features
+## 🚀 Quick Start
 
-- **Visual Flow Programming**: Create and connect Python nodes in an interactive diagram
-- **VS Code-Level Intelligence**: Full LSP support with Pyright and Ruff
-  - Real-time type checking and auto-completion
-  - Intelligent code suggestions based on installed packages
-  - Instant linting and formatting
-  - Go to definition and hover information
-- **Project Isolation**: Each project has its own Python virtual environment
-- **Auto-Recovery**: LSP processes automatically restart with exponential backoff
-- **Docker-Ready**: Fully containerized with production-ready configurations
-
-## Quick Start
-
-### Prerequisites
-
-- Docker and Docker Compose installed
-- Node.js 20+ and pnpm (for local development)
-- Python 3.11+ (for local development)
-
-### 🚀 Running with Docker (Recommended)
-
-#### Development Mode
+### Docker로 실행 (준비 중)
 ```bash
-# Clone the repository
-git clone https://github.com/AIM-Intelligence/AIM-RED-TOOLKIT.git
-cd aim-red-toolkit
-
-# Start services with hot reload and debug logging
+# 개발 모드
 docker-compose -f docker-compose.dev.yml up --build
 
-# Access the application
-# Frontend: http://localhost:5173
-# Backend API: http://localhost:8000
-# API Docs: http://localhost:8000/docs
-```
-
-#### Production Mode
-```bash
-# Build and run production containers
+# 프로덕션 모드  
 docker-compose -f docker-compose.prod.yml up --build
-
-# Access at http://localhost (nginx serves the frontend)
 ```
 
-### 💻 Local Development
-
+### 로컬 개발 (권장)
 ```bash
-# Install pnpm globally
+# pnpm 설치
 npm install -g pnpm
 
-# Install all dependencies
+# 의존성 설치
 pnpm install
 
-# Run both frontend and backend concurrently
+# 개발 서버 실행
+pnpm dev
+```
+
+## 📚 컴포넌트 개발 학습 가이드
+
+AIM-Forge에서 컴포넌트를 개발하고 싶다면 다음 단계를 따라주세요:
+
+### Step 1: Example Project 실행해보기
+```bash
+# 1. AIM-Forge 실행
 pnpm dev
 
-# Or run services individually
-pnpm frontend:dev  # Frontend on http://localhost:5173
-pnpm backend:dev   # Backend on http://localhost:8000
+# 2. 브라우저에서 http://localhost:5173 접속
+
+# 3. "New Project" 버튼으로 프로젝트 생성
+
+# 4. 왼쪽 패널에서 컴포넌트 드래그하여 추가
+   - Start Node 추가
+   - Custom Node 추가  
+   - Result Node 추가
+
+# 5. 노드 연결 후 Start 버튼으로 실행
 ```
 
-## Usage Guide
+### Step 2: Custom Component 이해하기
+커스텀 컴포넌트의 두 가지 모드를 익히세요:
 
-### Creating Your First Project
+- **Python Script Mode** - 간단한 `RunScript` 함수로 빠른 프로토타이핑
+- **AIM SDK Mode** - 헬퍼 클래스와 함께 재사용 가능한 컴포넌트 개발
 
-1. **Open the application** at http://localhost:5173
-2. **Create a new project** using the "New Project" button
-3. **Add nodes** to your flow:
-   - **Start Node**: Entry point for flow execution
-   - **Custom Node**: Write Python code that processes data
-   - **Result Node**: Display output from connected nodes
-4. **Connect nodes** by dragging from output to input ports
-5. **Write code** in custom nodes - enjoy full IntelliSense!
-6. **Execute the flow** from any start node
+📖 **필독:** [`docs/component-dev/CUSTOM_COMPONENT_GUIDE.md`](docs/component-dev/CUSTOM_COMPONENT_GUIDE.md)
 
-### LSP Features in Action
+### Step 3: 실제 Component 만들기
+프론트엔드 UI와 백엔드 로직을 갖춘 정식 컴포넌트 개발:
 
-When editing Python code in nodes, you'll get:
+1. 백엔드 템플릿 작성 (`packages/backend/templates/`)
+2. 프론트엔드 컴포넌트 작성 (`packages/frontend/src/components/nodes/`)
+3. 컴포넌트 등록 및 테스트
 
-- **Auto-completion**: Type `import ` and see available packages
-- **Type hints**: Hover over variables to see their types
-- **Error detection**: Red squiggles for syntax and type errors
-- **Quick fixes**: Automatic import suggestions
-- **Package awareness**: IntelliSense for installed packages in project's venv
+📖 **필독:** [`docs/component-dev/COMPONENT_DEVELOPMENT.md`](docs/component-dev/COMPONENT_DEVELOPMENT.md)
 
-### Managing Packages
+### 🤖 AI와 함께 개발하기
+Claude, GPT 등 AI 도구와 함께 컴포넌트를 개발할 수 있도록 프로젝트 전체 컨텍스트를 제공합니다.
 
-Each project has its own Python environment:
+📖 **AI 프롬프트:** [`docs/component-dev/AI_COMPONENT_PROMPTS.md`](docs/component-dev/AI_COMPONENT_PROMPTS.md)
 
-```python
-# In any custom node, you can use installed packages
-import numpy as np
-import pandas as pd
-
-def process(input_data):
-    # Full IntelliSense for numpy and pandas!
-    array = np.array(input_data)
-    df = pd.DataFrame(array)
-    return df.to_dict()
-```
-
-To install packages:
-1. Open the IDE for a node
-2. Use the package manager in the UI
-3. LSP automatically restarts to recognize new packages
-
-## API Endpoints
-
-### Core Endpoints
-- `GET /` - API information
-- `GET /api/health` - Health check
-- `POST /api/code/execute` - Execute Python code
-- `GET /api/project/` - List all projects
-- `POST /api/project/make` - Create new project
-- `POST /api/project/execute-flow` - Execute node flow
-
-### LSP Management
-- `WS /api/lsp/python` - Pyright LSP WebSocket
-- `WS /api/lsp/ruff` - Ruff LSP WebSocket
-- `GET /api/lsp/health` - Check LSP status
-- `POST /api/lsp/restart/{lsp_type}` - Restart LSP server
-- `GET /api/lsp/logs` - View LSP event logs
-
-### Package Management
-- `POST /api/code/packages/install` - Install Python package
-- `POST /api/code/packages/uninstall` - Remove package
-- `GET /api/code/packages/list` - List installed packages
-
-## Docker Commands
-
-```bash
-# Build images
-docker-compose build
-
-# Start services
-docker-compose up
-
-# Start in background
-docker-compose up -d
-
-# View logs
-docker-compose logs -f
-
-# Check LSP logs specifically
-docker-compose logs -f backend | grep LSP
-
-# Stop services
-docker-compose down
-
-# Clean everything (including volumes)
-docker-compose down -v
-```
-
-## Monitoring LSP Health
-
-### Check LSP Status
-```bash
-# Check both Pyright and Ruff status for a project
-curl http://localhost:8000/api/lsp/health?project_id=your_project_id
-
-# Check global LSP status
-curl http://localhost:8000/api/lsp/status
-```
-
-### View LSP Logs
-```bash
-# Recent LSP events
-curl http://localhost:8000/api/lsp/logs?n=50
-
-# Stdio logs for debugging
-curl "http://localhost:8000/api/lsp/stdio?project_id=your_project_id&lsp_type=pyright&stream=stderr"
-```
-
-### Restart LSP if Needed
-```bash
-# Restart Pyright for a project
-curl -X POST "http://localhost:8000/api/lsp/restart/pyright?project_id=your_project_id"
-
-# Restart Ruff
-curl -X POST "http://localhost:8000/api/lsp/restart/ruff?project_id=your_project_id"
-```
-
-## Environment Variables
-
-### Backend (LSP Configuration)
-```bash
-LSP_LOG_LEVEL=DEBUG          # Log level: DEBUG, INFO, WARNING, ERROR
-LSP_IDLE_TTL_MS=600000       # Idle timeout before stopping LSP (10 min)
-LSP_MAX_RESTARTS=5           # Max restart attempts
-LSP_RESTART_WINDOW_MS=60000  # Time window for restart counting
-```
-
-### Frontend
-```bash
-VITE_API_URL=http://backend:8000  # Backend API URL
-```
-
-## Troubleshooting
-
-### LSP Not Working?
-
-1. **Check if LSP is running**:
-   ```bash
-   curl http://localhost:8000/api/lsp/health?project_id=your_project_id
-   ```
-
-2. **View LSP logs**:
-   ```bash
-   docker-compose logs backend | grep -i lsp
-   ```
-
-3. **Manually restart LSP**:
-   ```bash
-   curl -X POST "http://localhost:8000/api/lsp/restart/pyright?project_id=your_project_id"
-   ```
-
-### Common Issues
-
-- **No auto-completion**: Check if project virtual environment exists
-- **Import errors**: Install required packages in project's venv
-- **WebSocket disconnection**: Check browser console for connection errors
-- **High CPU usage**: Adjust `LSP_IDLE_TTL_MS` to close idle processes faster
-
-### Container Issues
-
-```bash
-# Rebuild containers after dependency changes
-docker-compose build --no-cache
-
-# Check container logs
-docker-compose logs -f backend
-docker-compose logs -f frontend
-
-# Access backend container
-docker exec -it aim-red-backend-dev bash
-
-# Check if pyright is installed
-docker exec aim-red-backend-dev pyright --version
-```
-
-## Development Tips
-
-### Testing LSP Locally
-```bash
-# Test Pyright directly
-cd packages/backend
-pyright-langserver --stdio
-
-# Test Ruff
-ruff server
-```
-
-### Adding New LSP Features
-1. Update `lsp_manager.py` for process management
-2. Modify `lsp.py` for WebSocket handling
-3. Enhance `pythonLspClient.ts` for frontend integration
-4. Test with `docker-compose -f docker-compose.dev.yml up`
-
-## Architecture
+## 📁 문서 구조
 
 ```
-┌─────────────┐     WebSocket    ┌─────────────┐
-│   Frontend  │ ←───────────────→ │   Backend   │
-│   (React)   │                   │  (FastAPI)  │
-└─────────────┘                   └─────────────┘
-       │                                 │
-       │                                 ├── LSP Manager
-   Monaco Editor                         ├── Pyright Process
-       │                                 ├── Ruff Process
-   LSP Client                            └── VEnv Manager
+docs/
+├── development/         # 시스템 개발자용
+│   └── README.md        # 상세 개발 가이드
+│
+└── component-dev/       # 컴포넌트 개발자용
+    ├── README.md        # 컴포넌트 개발 시작 가이드
+    ├── CUSTOM_COMPONENT_GUIDE.md     # 커스텀 컴포넌트 규칙
+    ├── COMPONENT_DEVELOPMENT.md      # 정식 컴포넌트 개발
+    └── AI_COMPONENT_PROMPTS.md       # AI 도구 활용
 ```
 
-## Security Considerations
+## 🏗️ 프로젝트 구조
 
-For production deployment:
+```
+packages/
+├── frontend/            # React + TypeScript + XYFlow
+│   └── src/
+│       ├── components/  # UI 컴포넌트
+│       ├── pages/       # 라우트 페이지
+│       └── stores/      # Zustand 상태 관리
+│
+└── backend/             # FastAPI + Python
+    ├── app/
+    │   ├── api/         # API 엔드포인트
+    │   └── core/        # 비즈니스 로직
+    └── templates/       # 컴포넌트 템플릿
+```
 
-- Implement authentication and authorization
-- Use HTTPS for all connections
-- Sandbox code execution environments
-- Set resource limits for containers
-- Regularly update dependencies
-- Monitor and limit LSP process resources
-
-## Contributing
+## 🤝 Contributing
 
 1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run tests: `pnpm test`
-5. Submit a pull request
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
-## License
+## 📄 License
 
-MIT
+MIT License - 자세한 내용은 [LICENSE](LICENSE) 파일을 참조하세요.
 
-## Support
+## 🔗 Links
 
-For issues and questions:
-- GitHub Issues: [Report bugs or request features](https://github.com/AIM-Intelligence/AIM-RED-TOOLKIT/issues)
-- Documentation: Check `/docs` folder for detailed guides
-
----
-
-Built with ❤️ for the Python community. Enjoy VS Code-level coding experience in your browser!
+- [Issue Tracker](https://github.com/AIM-Intelligence/AIM-Forge/issues)
+- [Documentation](docs/)
+- [API Reference](http://localhost:8000/docs)
