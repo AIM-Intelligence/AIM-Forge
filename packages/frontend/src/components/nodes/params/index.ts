@@ -4,9 +4,10 @@
  */
 
 import TextInputNode from './TextInputNode';
+import NoteNode from './NoteNode';
 
 // Export components
-export { TextInputNode };
+export { TextInputNode, NoteNode };
 
 // Export metadata for component library
 export const paramsComponents = [
@@ -19,6 +20,16 @@ export const paramsComponents = [
     nodeType: "custom",
     componentType: "TextInput",
     component: TextInputNode,
+  },
+  {
+    id: "note",
+    name: "Note",
+    description: "Canvas note for annotations and documentation",
+    icon: "📌",
+    template: null, // No backend template needed
+    nodeType: "custom",
+    componentType: "Note",
+    component: NoteNode,
   },
   // Future components:
   // { id: "number-input", name: "Number Input", ... },

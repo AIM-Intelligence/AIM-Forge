@@ -19,13 +19,19 @@ def create_node(project_id: str, node_id: str, node_type: str, position: Dict[st
     # Extract title from data for filename
     node_title = data.get('title', f'node_{node_id}')
     
-    # Only create Python file for custom nodes
-    # Start and Result nodes don't need code files
+    # Only create Python file for custom nodes that aren't UI-only components
+    # Start, Result, and UI-only nodes (Note, TextInput) don't need code files
     py_filename = None
-    if node_type == 'custom':
+    component_type = data.get('componentType', '')
+    ui_only_components = ['Note', 'TextInput']  # List of UI-only components
+    
+    print(f"Creating node {node_id}: type={node_type}, componentType={component_type}, title={node_title}")
+    
+    if node_type == 'custom' and component_type not in ui_only_components:
         # Create python file for the node
         py_filename = f"{node_id}_{node_title}.py".replace(" ", "_").replace("/", "__")
         py_filepath = project_path / py_filename
+        print(f"Creating Python file for node {node_id}: {py_filename}")
         
         # Create empty python file with basic template
         initial_code = f"""# Node: {node_title}
@@ -48,7 +54,9 @@ def main(input_data=None):
 """
         with open(py_filepath, 'w') as f:
             f.write(initial_code)
-    # Start and Result nodes don't need any Python file
+    else:
+        print(f"Skipping Python file creation for node {node_id} (UI-only or non-custom)")
+    # Start, Result, and UI-only nodes don't need any Python file
     
     # Add new node with React Flow structure
     # Ensure data has required fields
@@ -79,7 +87,7 @@ def main(input_data=None):
     }
 
 def delete_node(project_id: str, node_id: str) -> Dict[str, Any]:
-    """Delete a node and its corresponding python file"""
+    """Delete a node and its corresponding python file (if it exists)"""
     from .project_operations import get_project_path
     from .project_structure import get_project_structure, save_project_structure
     
@@ -98,12 +106,20 @@ def delete_node(project_id: str, node_id: str) -> Dict[str, Any]:
     if not node_to_delete:
         raise ValueError(f"Node with ID '{node_id}' not found")
     
-    # Delete python file (file reference is now in data)
-    file_name = node_to_delete.get('data', {}).get('file')
-    if file_name:
-        py_filepath = project_path / file_name
-        if py_filepath.exists():
-            py_filepath.unlink()
+    # Check if this is a UI-only component
+    component_type = node_to_delete.get('data', {}).get('componentType', '')
+    ui_only_components = ['Note', 'TextInput']
+    
+    # Only delete python file if it's not a UI-only component
+    if component_type not in ui_only_components:
+        file_name = node_to_delete.get('data', {}).get('file')
+        if file_name:
+            py_filepath = project_path / file_name
+            if py_filepath.exists():
+                py_filepath.unlink()
+            print(f"Deleted file for node {node_id}: {file_name}")
+    else:
+        print(f"Skipping file deletion for UI-only node {node_id} (type: {component_type})")
     
     # Remove node from structure
     structure['nodes'] = [n for n in structure['nodes'] if n['id'] != node_id]
@@ -240,14 +256,18 @@ def update_node_position(project_id: str, node_id: str, position: Dict[str, floa
     
     # Find and update node position
     node_found = False
+    target_node = None
     for node in structure['nodes']:
         if node['id'] == node_id:
-            node['position'] = position
+            target_node = node
             node_found = True
             break
     
     if not node_found:
         raise ValueError(f"Node with ID '{node_id}' not found")
+    
+    # Update the position
+    target_node['position'] = position
     
     # Save updated structure
     save_project_structure(project_id, structure)
@@ -257,4 +277,41 @@ def update_node_position(project_id: str, node_id: str, position: Dict[str, floa
         "message": f"Position updated for node '{node_id}'",
         "node_id": node_id,
         "position": position
+    }
+
+def update_node_metadata(project_id: str, node_id: str, metadata: Dict[str, Any]) -> Dict[str, Any]:
+    """Update node metadata (dimensions, content, etc.) in project structure"""
+    from .project_structure import get_project_structure, save_project_structure
+    
+    # Get current structure
+    structure = get_project_structure(project_id)
+    
+    # Find and update node
+    node_found = False
+    target_node = None
+    for node in structure['nodes']:
+        if node['id'] == node_id:
+            target_node = node
+            node_found = True
+            break
+    
+    if not node_found:
+        raise ValueError(f"Node with ID '{node_id}' not found")
+    
+    # Update node data with metadata
+    # Preserve existing data and add/update with new metadata
+    if 'data' not in target_node:
+        target_node['data'] = {}
+    
+    # Merge metadata into node data
+    target_node['data'].update(metadata)
+    
+    # Save updated structure
+    save_project_structure(project_id, structure)
+    
+    return {
+        "success": True,
+        "message": f"Metadata updated for node '{node_id}'",
+        "node_id": node_id,
+        "metadata": metadata
     }

@@ -23,6 +23,7 @@ type ComponentRegistry = {
 export const componentRegistry: ComponentRegistry = {
   // Add components that have componentType defined
   ...(Params.TextInputNode ? { 'TextInput': Params.TextInputNode } : {}),
+  ...(Params.NoteNode ? { 'Note': Params.NoteNode } : {}),
   // Future components will be added automatically when they export with metadata
   // The pattern is: componentType -> Component mapping
 };

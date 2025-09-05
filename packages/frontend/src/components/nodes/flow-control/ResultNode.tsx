@@ -1,18 +1,23 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import clsx from "clsx";
 import { useParams } from "react-router-dom";
 import { useExecutionStore } from "../../../stores/executionStore";
+import { useNodeData } from "../../../hooks/useNodeData";
 
 export type ResultNodeType = Node<{
   title: string;
   description: string;
   projectTitle?: string;
+  file?: string;
 }>;
+
+interface ResultNodeData {
+  dimensions: { width: number; height: number };
+}
 
 export default function ResultNode(props: NodeProps<ResultNodeType>) {
   const [hovering, setHovering] = useState(false);
-  const [dimensions, setDimensions] = useState({ width: 300, height: 200 });
   const [isResizing, setIsResizing] = useState(false);
   const [userText, setUserText] = useState<string>("");
   const nodeRef = useRef<HTMLDivElement>(null);
@@ -22,21 +27,17 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
   const runId = useExecutionStore((state) => state.runId);
   const executionResults = useExecutionStore((state) => state.executionResults);
 
-  // Load saved dimensions from localStorage on mount
-  useEffect(() => {
-    if (projectId) {
-      const dimensionsKey = `result_dimensions_${projectId}_${props.id}`;
-      const savedDimensions = localStorage.getItem(dimensionsKey);
-      if (savedDimensions) {
-        try {
-          const parsed = JSON.parse(savedDimensions);
-          setDimensions(parsed);
-        } catch (e) {
-          console.error("Failed to parse saved dimensions:", e);
-        }
-      }
-    }
-  }, [projectId, props.id]);
+  // Use unified data management hook
+  const { data, setData } = useNodeData<ResultNodeData>({
+    projectId,
+    nodeId: props.id,
+    storageKey: 'result_data',
+    defaultValue: {
+      dimensions: { width: 300, height: 200 }
+    },
+    serverData: props.data,
+    debounceMs: 300,
+  });
 
   // Update text when execution results change
   useEffect(() => {
@@ -79,15 +80,11 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
     setNodeResult(props.id, newText);
   };
 
+  // Handle delete
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
     
-    // Clear localStorage dimensions when deleting
-    if (projectId) {
-      const dimensionsKey = `result_dimensions_${projectId}_${props.id}`;
-      localStorage.removeItem(dimensionsKey);
-    }
-    // 부모 컴포넌트에서 처리하도록 이벤트 전달
+    // Dispatch delete event (localStorage cleanup handled by hook)
     const deleteEvent = new CustomEvent("deleteNode", {
       detail: { id: props.id },
       bubbles: true,
@@ -162,6 +159,7 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
     URL.revokeObjectURL(url);
   };
 
+  // Handle resize
   const handleResize = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -169,8 +167,8 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
 
     const startX = e.clientX;
     const startY = e.clientY;
-    const startWidth = dimensions.width;
-    const startHeight = dimensions.height;
+    const startWidth = data.dimensions.width;
+    const startHeight = data.dimensions.height;
 
     let finalWidth = startWidth;
     let finalHeight = startHeight;
@@ -179,7 +177,7 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
       finalWidth = Math.min(900, Math.max(50, startWidth + e.clientX - startX));
       finalHeight = Math.min(600, Math.max(50, startHeight + e.clientY - startY));
       
-      setDimensions({ width: finalWidth, height: finalHeight });
+      setData({ dimensions: { width: finalWidth, height: finalHeight } });
     };
 
     const handleMouseUp = () => {
@@ -187,18 +185,13 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
       document.body.style.cursor = '';
-      
-      // Save final dimensions to localStorage
-      if (projectId) {
-        const dimensionsKey = `result_dimensions_${projectId}_${props.id}`;
-        localStorage.setItem(dimensionsKey, JSON.stringify({ width: finalWidth, height: finalHeight }));
-      }
     };
 
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
     document.body.style.cursor = 'nwse-resize';
   };
+
 
   return (
     <>
@@ -211,8 +204,8 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
           isResizing && "shadow-xl border-blue-500"
         )}
         style={{
-          width: `${dimensions.width}px`,
-          height: `${dimensions.height}px`,
+          width: `${data.dimensions.width}px`,
+          height: `${data.dimensions.height}px`,
         }}
         onMouseEnter={() => setHovering(true)}
         onMouseLeave={() => setHovering(false)}
@@ -295,18 +288,6 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
           className="w-3 h-3"
           style={{
             left: -8,
-            top: '50%',
-            transform: 'translateY(-50%)',
-          }}
-        />
-        
-        {/* Output handle for passing data to next component */}
-        <Handle
-          type="source"
-          position={Position.Right}
-          className="w-3 h-3"
-          style={{
-            right: -8,
             top: '50%',
             transform: 'translateY(-50%)',
           }}

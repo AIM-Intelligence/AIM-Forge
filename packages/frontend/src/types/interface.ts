@@ -26,6 +26,7 @@ export interface NodeData {
   outputs?: PortInfo[];        // Output ports
   viewCode?: () => void;       // Handler for view code button
   updateKey?: number;          // Force re-render when changed
+  componentType?: string;      // Component type for extensible UI components (Note, TextInput, etc.)
 }
 
 export interface EdgeMarkerEnd {

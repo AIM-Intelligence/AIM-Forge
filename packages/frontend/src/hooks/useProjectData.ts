@@ -84,6 +84,13 @@ export function useProjectData(
                   data: baseData,
                 } as ResultNodeType;
               } else {
+                // Check if this is a Note node or other UI-only component
+                const isUIOnly = node.data.componentType === 'Note' || node.data.componentType === 'TextInput';
+                
+                if (isUIOnly) {
+                  console.log(`Loading UI-only node ${node.id} with componentType: ${node.data.componentType}`);
+                }
+                
                 return {
                   id: node.id,
                   type: 'custom',
@@ -91,9 +98,10 @@ export function useProjectData(
                   data: {
                     ...baseData,
                     file: node.data.file,
-                    viewCode: () => {
+                    componentType: node.data.componentType, // Preserve component type for UI-only nodes
+                    viewCode: node.data.file ? (() => {
                       onNodeClick(node.id, node.data.title || `Node ${node.id}`, node.data.file);
-                    },
+                    }) : undefined,
                   },
                 } as DefaultNodeType;
               }
@@ -123,7 +131,11 @@ export function useProjectData(
           // Fetch metadata for custom nodes
           const nodesWithMetadata = await Promise.all(
             nodes.map(async (node) => {
-              if (node.type === 'custom') {
+              // Skip metadata fetch for UI-only nodes
+              const isUIOnly = (node.data as any).componentType === 'Note' || 
+                               (node.data as any).componentType === 'TextInput';
+              
+              if (node.type === 'custom' && !isUIOnly && (node.data as any).file) {
                 try {
                   const metadataResult = await codeApi.getNodeMetadata({
                     project_id: projectId,

@@ -351,7 +351,6 @@ export function useNodeOperations({
                   node_id: change.id,
                   position: change.position,
                 });
-                console.log(`Position updated for node ${change.id}`);
               } catch (error) {
                 console.error(`Failed to update position for node ${change.id}:`, error);
               }
@@ -360,7 +359,7 @@ export function useNodeOperations({
         }, 500); // Wait 500ms after drag ends before updating
       }
     },
-    [onNodesChangeInternal, projectId]
+    [onNodesChangeInternal, projectId, nodes]
   );
 
   // Add new node

@@ -61,6 +61,11 @@ class UpdateNodePositionRequest(BaseModel):
     node_id: str
     position: Dict[str, float]
 
+class UpdateNodeMetadataRequest(BaseModel):
+    project_id: str
+    node_id: str
+    metadata: Dict[str, Any]  # dimensions, content, fontSize, etc.
+
 class CreateEdgeRequest(BaseModel):
     project_id: str
     edge_id: str
@@ -234,6 +239,22 @@ async def update_node_position(request: UpdateNodePositionRequest):
             request.project_id,
             request.node_id,
             request.position
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/updatenode/metadata")
+async def update_node_metadata(request: UpdateNodeMetadataRequest):
+    """Update node metadata (dimensions, content, etc.) in project structure"""
+    try:
+        result = node_operations.update_node_metadata(
+            request.project_id,
+            request.node_id,
+            request.metadata
         )
         return result
     except ValueError as e:

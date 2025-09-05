@@ -146,6 +146,23 @@ export const projectApi = {
     });
   },
 
+  // Update node metadata (dimensions, content, etc.)
+  async updateNodeMetadata(data: {
+    project_id: string;
+    node_id: string;
+    metadata: Record<string, any>;
+  }): Promise<{
+    success: boolean;
+    message: string;
+    node_id: string;
+    metadata: Record<string, any>;
+  }> {
+    return apiCall("/project/updatenode/metadata", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  },
+
   // Create edge
   async createEdge(data: CreateEdgeRequest): Promise<CreateEdgeResponse> {
     return apiCall<CreateEdgeResponse>("/project/makeedge", {

@@ -11,27 +11,33 @@ AIM-Forge 컴포넌트 개발을 시작하신 것을 환영합니다! 🎉
 - ✅ Custom Component를 Python 스크립트로 빠르게 프로토타이핑
 - ✅ 재사용 가능한 Production 컴포넌트 개발
 - ✅ 프론트엔드 UI와 백엔드 로직 통합
-- ✅ AI 도구(Claude, GPT)와 함께 컴포넌트 개발
+- ✅ AI (Claude, GPT)와 함께 컴포넌트 개발
 
 ## 📖 학습 경로
 
-### 🚀 Level 1: Quick Start (30분)
+### 🚀 Level 1: Quick Start
 
 #### Step 1: AIM-Forge 실행해보기
 ```bash
 # 프로젝트 실행
 pnpm dev
 
-# 브라우저에서 http://localhost:5173 접속
+# Network: http://XXX.XXX.XX.XXX:5173/ 접속
 ```
 
-#### Step 2: 첫 파이프라인 만들기
-1. **New Project** 버튼으로 프로젝트 생성
+#### Step 2: Example Playground 프로젝트로 시작하기 (준비 중)
+**"Example Playground"** 프로젝트를 열어 다양한 파이프라인을 체험해보세요:
+- 기초 파이프라인: 데이터 입출력과 간단한 처리
+- 베이스 컴포넌트 활용: CSV 로더, API 호출 등
+- 커스텀 컴포넌트 예제: 사칙연산 계산기, 텍스트 처리기
+
+#### Step 3: 첫 파이프라인 직접 만들기
+1. **New Project** 버튼으로 새 프로젝트 생성
 2. 왼쪽 패널에서 컴포넌트 추가:
    - `Start Node` - 실행 시작점
    - `Custom Node` - Python 코드 작성
    - `Result Node` - 결과 확인
-3. 노드를 드래그하여 연결 (Start → Custom → Result)
+3. 노드를 연결 (Start → Custom → Result)
 4. Custom Node를 더블클릭하여 코드 작성:
    ```python
    def RunScript(x: int = 5) -> dict:
@@ -39,13 +45,15 @@ pnpm dev
    ```
 5. Start 노드의 실행 버튼 클릭
 
-축하합니다! 첫 컴포넌트를 만들었습니다! 🎉
+축하합니다! 첫 컴포넌트를 직접 만들었습니다! 🎉
 
-### 💡 Level 2: Custom Component 이해 (1시간)
+### 💡 Level 2: Custom Component 이해
 
 커스텀 컴포넌트의 핵심 개념을 이해합니다.
 
-#### 📚 필독 문서: [CUSTOM_COMPONENT_GUIDE.md](CUSTOM_COMPONENT_GUIDE.md)
+#### 📚 필독 문서
+- 한국어: [CUSTOM_COMPONENT_GUIDE_KR.md](CUSTOM_COMPONENT_GUIDE_KR.md)
+- English: [CUSTOM_COMPONENT_GUIDE_EN.md](CUSTOM_COMPONENT_GUIDE_EN.md)
 
 **주요 학습 내용:**
 - **Python Script Mode** - 간단한 실험과 프로토타이핑
@@ -84,11 +92,13 @@ def RunScript(
 3. 입력 포트가 자동으로 생성되는 것 확인
 4. 실행하여 결과 확인
 
-### 🔧 Level 3: Production Component 개발 (2시간)
+### 🔧 Level 3: Production Component 개발
 
 실제 배포 가능한 컴포넌트를 만듭니다.
 
-#### 📚 필독 문서: [COMPONENT_DEVELOPMENT.md](COMPONENT_DEVELOPMENT_KR.md)
+#### 📚 필독 문서
+- 한국어: [COMPONENT_DEVELOPMENT_KR.md](COMPONENT_DEVELOPMENT_KR.md)
+- English: [COMPONENT_DEVELOPMENT_EN.md](COMPONENT_DEVELOPMENT_EN.md)
 
 **주요 학습 내용:**
 - 백엔드 템플릿 작성 (`packages/backend/templates/`)

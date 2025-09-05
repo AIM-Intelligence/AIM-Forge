@@ -3,65 +3,49 @@ import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import clsx from "clsx";
 import { useParams } from "react-router-dom";
 import { useExecutionStore } from "../../../stores/executionStore";
+import { useNodeData } from "../../../hooks/useNodeData";
 
 export type TextInputNodeType = Node<{
   title: string;
   description: string;
   projectTitle?: string;
+  file?: string;
 }>;
+
+interface TextInputData {
+  value: string;
+  dimensions: { width: number; height: number };
+}
 
 export default function TextInputNode(props: NodeProps<TextInputNodeType>) {
   const [hovering, setHovering] = useState(false);
-  const [dimensions, setDimensions] = useState({ width: 300, height: 150 });
   const [isResizing, setIsResizing] = useState(false);
-  const [userText, setUserText] = useState<string>("");
   const nodeRef = useRef<HTMLDivElement>(null);
   const { projectId } = useParams<{ projectId: string }>();
   const setNodeResult = useExecutionStore((state) => state.setNodeResult);
 
-  // Load saved dimensions from localStorage on mount
-  useEffect(() => {
-    if (projectId) {
-      const dimensionsKey = `textInput_dimensions_${projectId}_${props.id}`;
-      const savedDimensions = localStorage.getItem(dimensionsKey);
-      if (savedDimensions) {
-        try {
-          const parsed = JSON.parse(savedDimensions);
-          setDimensions(parsed);
-        } catch (e) {
-          console.error("Failed to parse saved dimensions:", e);
-        }
-      }
-    }
-  }, [projectId, props.id]);
+  // Use unified data management hook
+  const { data, setData } = useNodeData<TextInputData>({
+    projectId,
+    nodeId: props.id,
+    storageKey: 'textInput_data',
+    defaultValue: {
+      value: '',
+      dimensions: { width: 300, height: 150 }
+    },
+    serverData: props.data,
+    debounceMs: 500,
+  });
 
-  // Load saved value from localStorage on mount and when id changes
+  // Initialize execution store value
   useEffect(() => {
-    if (projectId) {
-      const storageKey = `textInput_${projectId}_${props.id}`;
-      const savedValue = localStorage.getItem(storageKey);
-      if (savedValue) {
-        setUserText(savedValue);
-        // Also set in execution store so it can be used immediately
-        setNodeResult(props.id, savedValue);
-      } else {
-        // Even if no saved value, initialize with empty string
-        setNodeResult(props.id, "");
-      }
-    }
-  }, [projectId, props.id, setNodeResult]);
+    setNodeResult(props.id, data.value);
+  }, [props.id, data.value, setNodeResult]);
 
-  // Handle text change and save to localStorage
+  // Handle text change
   const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newText = e.target.value;
-    setUserText(newText);
-    
-    // Save to localStorage for persistence
-    if (projectId) {
-      const storageKey = `textInput_${projectId}_${props.id}`;
-      localStorage.setItem(storageKey, newText);
-    }
-    
+    setData(prev => ({ ...prev, value: newText }));
     // Store in execution store for flow execution
     setNodeResult(props.id, newText);
   };
@@ -69,13 +53,8 @@ export default function TextInputNode(props: NodeProps<TextInputNodeType>) {
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
     
-    // Clear localStorage when deleting
-    if (projectId) {
-      const storageKey = `textInput_${projectId}_${props.id}`;
-      localStorage.removeItem(storageKey);
-      const dimensionsKey = `textInput_dimensions_${projectId}_${props.id}`;
-      localStorage.removeItem(dimensionsKey);
-    }
+    // Clear from execution store
+    setNodeResult(props.id, null);
     
     // Dispatch delete event
     const deleteEvent = new CustomEvent("deleteNode", {
@@ -92,8 +71,8 @@ export default function TextInputNode(props: NodeProps<TextInputNodeType>) {
 
     const startX = e.clientX;
     const startY = e.clientY;
-    const startWidth = dimensions.width;
-    const startHeight = dimensions.height;
+    const startWidth = data.dimensions.width;
+    const startHeight = data.dimensions.height;
 
     let finalWidth = startWidth;
     let finalHeight = startHeight;
@@ -102,7 +81,7 @@ export default function TextInputNode(props: NodeProps<TextInputNodeType>) {
       finalWidth = Math.min(900, Math.max(50, startWidth + e.clientX - startX));
       finalHeight = Math.min(600, Math.max(50, startHeight + e.clientY - startY));
       
-      setDimensions({ width: finalWidth, height: finalHeight });
+      setData(prev => ({ ...prev, dimensions: { width: finalWidth, height: finalHeight } }));
     };
 
     const handleMouseUp = () => {
@@ -110,12 +89,6 @@ export default function TextInputNode(props: NodeProps<TextInputNodeType>) {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
       document.body.style.cursor = '';
-      
-      // Save final dimensions to localStorage
-      if (projectId) {
-        const dimensionsKey = `textInput_dimensions_${projectId}_${props.id}`;
-        localStorage.setItem(dimensionsKey, JSON.stringify({ width: finalWidth, height: finalHeight }));
-      }
     };
 
     document.addEventListener('mousemove', handleMouseMove);
@@ -134,8 +107,8 @@ export default function TextInputNode(props: NodeProps<TextInputNodeType>) {
           isResizing && "shadow-xl border-blue-500"
         )}
         style={{
-          width: `${dimensions.width}px`,
-          height: `${dimensions.height}px`,
+          width: `${data.dimensions.width}px`,
+          height: `${data.dimensions.height}px`,
         }}
         onMouseEnter={() => setHovering(true)}
         onMouseLeave={() => setHovering(false)}
@@ -155,7 +128,7 @@ export default function TextInputNode(props: NodeProps<TextInputNodeType>) {
           {/* Editable text area - takes full space */}
           <textarea
             className="flex-1 p-3 bg-transparent text-sm text-blue-300 font-mono resize-none outline-none nowheel"
-            value={userText}
+            value={data.value}
             onChange={handleTextChange}
             placeholder="Enter text value..."
             onMouseDown={(e) => {

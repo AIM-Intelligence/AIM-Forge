@@ -10,7 +10,7 @@ import { useProjectData } from "../../hooks/useProjectData";
 import { useNodeOperations } from "../../hooks/useNodeOperations";
 import { useEdgeOperations } from "../../hooks/useEdgeOperations";
 import { type ComponentTemplate } from "../../config/componentLibrary";
-import { codeApi } from "../../utils/api";
+import { codeApi, projectApi } from "../../utils/api";
 import { useExecutionStore } from "../../stores/executionStore";
 
 export default function Project() {
@@ -96,30 +96,40 @@ export default function Project() {
       setNodeIdCounter(prev => prev + 1);
 
       try {
-        // Create node from template
-        const apiUrl = window.location.hostname === 'localhost' 
-          ? 'http://localhost:8000' 
-          : `http://${window.location.hostname}:8000`;
-        const response = await fetch(`${apiUrl}/api/components/create-from-template`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            project_id: projectId,
-            node_id: newNodeId,
-            template_name: component.template,
-            title: component.name,
-            description: component.description,
-            component_type: component.componentType, // Pass componentType if present
-          }),
-        });
+        let result: any = {};
+        
+        // Only create from template if template is provided (not for UI-only components like Note)
+        if (component.template) {
+          // Create node from template
+          const apiUrl = window.location.hostname === 'localhost' 
+            ? 'http://localhost:8000' 
+            : `http://${window.location.hostname}:8000`;
+          const response = await fetch(`${apiUrl}/api/components/create-from-template`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              project_id: projectId,
+              node_id: newNodeId,
+              template_name: component.template,
+              title: component.name,
+              description: component.description,
+              component_type: component.componentType, // Pass componentType if present
+            }),
+          });
 
-        if (response.ok) {
-          const result = await response.json();
+          if (response.ok) {
+            result = await response.json();
+          } else {
+            console.error("Failed to create node from template");
+            return;
+          }
+        }
           
-          // Get metadata for the new node to extract inputs/outputs
-          let inputs = undefined;
-          let outputs = undefined;
-          
+        // Get metadata for the new node to extract inputs/outputs (only if template exists)
+        let inputs = undefined;
+        let outputs = undefined;
+        
+        if (component.template) {
           try {
             const metadataResult = await codeApi.getNodeMetadata({
               project_id: projectId,
@@ -158,31 +168,52 @@ export default function Project() {
           } catch (error) {
             console.error(`Failed to fetch metadata for new node:`, error);
           }
-          
-          // Create new node without page refresh
-          const newNode = {
-            id: newNodeId,
-            type: component.nodeType || "custom",
-            position: { 
-              x: 250 + Math.random() * 100, // Random offset to prevent overlap
-              y: 100 + Math.random() * 100 
-            },
-            data: {
-              title: component.name,
-              description: component.description,
-              file: result.file_name || `${newNodeId}_${component.name.replace(/\s+/g, '_')}.py`,
-              viewCode: () => handleNodeClick(newNodeId, component.name, result.file_name || `${newNodeId}_${component.name.replace(/\s+/g, '_')}.py`),
-              inputs: inputs,
-              outputs: outputs,
-              componentType: component.componentType,  // Add componentType for extensible rendering
-            }
-          };
-          
-          // Add node to React Flow
-          setNodes(currentNodes => [...currentNodes, newNode]);
-        } else {
-          console.error("Failed to create node from template");
         }
+        
+        // Create new node without page refresh
+        const position = { 
+          x: 250 + Math.random() * 100, // Random offset to prevent overlap
+          y: 100 + Math.random() * 100 
+        };
+        
+        const newNode = {
+          id: newNodeId,
+          type: component.nodeType || "custom",
+          position,
+          data: {
+            title: component.name,
+            description: component.description,
+            file: component.template ? (result.file_name || `${newNodeId}_${component.name.replace(/\s+/g, '_')}.py`) : undefined,
+            viewCode: component.template ? (() => handleNodeClick(newNodeId, component.name, result.file_name || `${newNodeId}_${component.name.replace(/\s+/g, '_')}.py`)) : undefined,
+            inputs: inputs,
+            outputs: outputs,
+            componentType: component.componentType,  // Add componentType for extensible rendering
+          }
+        };
+        
+        // For UI-only components (like Note), also create in backend for persistence
+        if (!component.template && component.componentType) {
+          console.log(`Creating UI-only node ${newNodeId} with componentType: ${component.componentType}`);
+          try {
+            const response = await projectApi.createNode({
+              project_id: projectId,
+              node_id: newNodeId,
+              node_type: component.nodeType || "custom",
+              position,
+              data: {
+                title: component.name,
+                description: component.description,
+                componentType: component.componentType,
+              }
+            });
+            console.log(`UI-only node ${newNodeId} created successfully:`, response);
+          } catch (error) {
+            console.error(`Failed to save UI-only node ${newNodeId} to backend:`, error);
+          }
+        }
+        
+        // Add node to React Flow
+        setNodes(currentNodes => [...currentNodes, newNode]);
       } catch (error) {
         console.error("Error creating node from template:", error);
       }

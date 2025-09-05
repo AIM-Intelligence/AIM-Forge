@@ -4,15 +4,6 @@
 
 ## 🚀 Quick Start
 
-### Docker로 실행 (준비 중)
-```bash
-# 개발 모드
-docker-compose -f docker-compose.dev.yml up --build
-
-# 프로덕션 모드  
-docker-compose -f docker-compose.prod.yml up --build
-```
-
 ### 로컬 개발 (권장)
 ```bash
 # pnpm 설치
@@ -23,50 +14,30 @@ pnpm install
 
 # 개발 서버 실행
 pnpm dev
+
+# Network: http://XXX.XXX.XX.XXX:5173/ 접속
+```
+
+### Docker로 실행 (준비 중)
+```bash
+# 개발 모드
+docker-compose -f docker-compose.dev.yml up --build
+
+# 프로덕션 모드  
+docker-compose -f docker-compose.prod.yml up --build
 ```
 
 ## 📚 컴포넌트 개발 학습 가이드
 
-AIM-Forge에서 컴포넌트를 개발하고 싶다면 다음 단계를 따라주세요:
+AIM-Forge 컴포넌트를 개발하고 싶다면 체계적인 학습 경로를 제공하는 가이드를 참고하세요:
 
-### Step 1: Example Project 실행해보기
-```bash
-# 1. AIM-Forge 실행
-pnpm dev
+👉 **[컴포넌트 개발자 가이드 바로가기](docs/component-dev/README.md)**
 
-# 2. 브라우저에서 http://localhost:5173 접속
-
-# 3. "New Project" 버튼으로 프로젝트 생성
-
-# 4. 왼쪽 패널에서 컴포넌트 드래그하여 추가
-   - Start Node 추가
-   - Custom Node 추가  
-   - Result Node 추가
-
-# 5. 노드 연결 후 Start 버튼으로 실행
-```
-
-### Step 2: Custom Component 이해하기
-커스텀 컴포넌트의 두 가지 모드를 익히세요:
-
-- **Python Script Mode** - 간단한 `RunScript` 함수로 빠른 프로토타이핑
-- **AIM SDK Mode** - 헬퍼 클래스와 함께 재사용 가능한 컴포넌트 개발
-
-📖 **필독:** [`docs/component-dev/CUSTOM_COMPONENT_GUIDE.md`](docs/component-dev/CUSTOM_COMPONENT_GUIDE.md)
-
-### Step 3: 실제 Component 만들기
-프론트엔드 UI와 백엔드 로직을 갖춘 정식 컴포넌트 개발:
-
-1. 백엔드 템플릿 작성 (`packages/backend/templates/`)
-2. 프론트엔드 컴포넌트 작성 (`packages/frontend/src/components/nodes/`)
-3. 컴포넌트 등록 및 테스트
-
-📖 **필독:** [`docs/component-dev/COMPONENT_DEVELOPMENT.md`](docs/component-dev/COMPONENT_DEVELOPMENT.md)
-
-### 🤖 AI와 함께 개발하기
-Claude, GPT 등 AI 도구와 함께 컴포넌트를 개발할 수 있도록 프로젝트 전체 컨텍스트를 제공합니다.
-
-📖 **AI 프롬프트:** [`docs/component-dev/AI_COMPONENT_PROMPTS.md`](docs/component-dev/AI_COMPONENT_PROMPTS.md)
+**학습 단계:**
+- 🚀 Level 1: Quick Start - 첫 파이프라인 만들기
+- 💡 Level 2: Custom Component 이해 - Python Script Mode & SDK Mode
+- 🔧 Level 3: Production Component - 정식 컴포넌트 개발
+- 🤖 Level 4: AI와 함께 개발 - Claude/GPT 활용법
 
 ## 📁 문서 구조
 
