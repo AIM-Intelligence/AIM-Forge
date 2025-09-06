@@ -36,6 +36,7 @@ interface ProjectFlowProps {
   onEdgesChange: OnEdgesChange<Edge>;
   onConnect: (connection: Connection) => void;
   isValidConnection: (connection: Edge | Connection) => boolean;
+  onInit?: (reactFlowInstance: any) => void;
   children?: ReactNode;
 }
 
@@ -47,11 +48,20 @@ function ProjectFlowInner({
   onEdgesChange,
   onConnect,
   isValidConnection,
+  onInit,
   children,
 }: ProjectFlowProps) {
   const updateNodeInternals = useUpdateNodeInternals();
   const pendingUpdatesRef = useRef(new Set<string>());
   const rafRef = useRef<number>(0);
+  const reactFlowInstance = useReactFlow();
+  
+  // Pass React Flow instance to parent when ready
+  useEffect(() => {
+    if (onInit && reactFlowInstance) {
+      onInit(reactFlowInstance);
+    }
+  }, [onInit, reactFlowInstance]);
   
   // Queue updateNodeInternals calls to batch them
   const queueUpdateInternals = useCallback((nodeId: string) => {

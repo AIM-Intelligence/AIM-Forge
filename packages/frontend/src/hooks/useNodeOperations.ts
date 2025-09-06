@@ -23,6 +23,7 @@ interface UseNodeOperationsProps {
   nodeIdCounter: number;
   setNodeIdCounter: React.Dispatch<React.SetStateAction<number>>;
   onNodeClick: (nodeId: string, title: string) => void;
+  reactFlowInstance?: React.MutableRefObject<any>;
 }
 
 interface UseNodeOperationsReturn {
@@ -46,6 +47,7 @@ export function useNodeOperations({
   nodeIdCounter,
   setNodeIdCounter,
   onNodeClick,
+  reactFlowInstance,
 }: UseNodeOperationsProps): UseNodeOperationsReturn {
   const [nodes, setNodes, onNodesChangeInternal] =
     useNodesState<AnyNodeType>(initialNodes as any);
@@ -373,10 +375,24 @@ export function useNodeOperations({
       if (!projectId) return;
 
       const nodeId = nodeIdCounter.toString();
-      const position = {
-        x: Math.random() * 500 + 100,
-        y: Math.random() * 300 + 100,
-      };
+      
+      // Calculate position at viewport center
+      let position = { x: 250, y: 100 }; // Default fallback
+      
+      if (reactFlowInstance?.current) {
+        const centerX = window.innerWidth / 2;
+        const centerY = window.innerHeight / 2;
+        
+        // Convert screen center to flow coordinates
+        position = reactFlowInstance.current.screenToFlowPosition({
+          x: centerX,
+          y: centerY
+        });
+        
+        // Add small random offset to prevent exact overlap
+        position.x += (Math.random() - 0.5) * 50;
+        position.y += (Math.random() - 0.5) * 50;
+      }
 
       try {
         // Call API to create node on backend
@@ -445,7 +461,7 @@ export function useNodeOperations({
         );
       }
     },
-    [nodeIdCounter, setNodes, projectId, setNodeIdCounter, onNodeClick]
+    [nodeIdCounter, setNodes, projectId, setNodeIdCounter, onNodeClick, reactFlowInstance]
   );
 
   // Node deletion handler

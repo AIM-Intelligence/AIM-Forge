@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { useParams } from "react-router-dom";
 import IdeModal from "../../components/modal/Ide";
 import Loading from "../../components/loading/Loading";
@@ -19,6 +19,7 @@ export default function Project() {
   const toastMessage = useExecutionStore((state) => state.toastMessage);
   const setToastMessage = useExecutionStore((state) => state.setToastMessage);
   const loadFromLocalStorage = useNodeValueStore((state) => state.loadFromLocalStorage);
+  const reactFlowInstanceRef = useRef<any>(null);
 
   // Load node values from localStorage when project loads
   useEffect(() => {
@@ -85,6 +86,7 @@ export default function Project() {
       nodeIdCounter,
       setNodeIdCounter,
       onNodeClick: handleNodeClick,
+      reactFlowInstance: reactFlowInstanceRef,
     });
 
   // Edge operations
@@ -168,14 +170,30 @@ export default function Project() {
             console.error(`Failed to fetch metadata for new node:`, error);
           }
           
+          // Calculate position at viewport center
+          let position = { x: 250, y: 100 }; // Default fallback
+          
+          if (reactFlowInstanceRef.current) {
+            const { x, y, zoom } = reactFlowInstanceRef.current.getViewport();
+            const centerX = window.innerWidth / 2;
+            const centerY = window.innerHeight / 2;
+            
+            // Convert screen center to flow coordinates
+            position = reactFlowInstanceRef.current.screenToFlowPosition({
+              x: centerX,
+              y: centerY
+            });
+            
+            // Add small random offset to prevent exact overlap when adding multiple nodes
+            position.x += (Math.random() - 0.5) * 50;
+            position.y += (Math.random() - 0.5) * 50;
+          }
+          
           // Create new node without page refresh
           const newNode = {
             id: newNodeId,
             type: component.nodeType || "custom",
-            position: { 
-              x: 250 + Math.random() * 100, // Random offset to prevent overlap
-              y: 100 + Math.random() * 100 
-            },
+            position,
             data: {
               title: component.name,
               description: component.description,
@@ -244,10 +262,39 @@ export default function Project() {
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         isValidConnection={isValidConnection}
+        onInit={(instance) => { reactFlowInstanceRef.current = instance; }}
       >
         <ProjectPanel
           projectTitle={projectTitle}
-          nodeCount={nodes.length}
+          nodeCount={(() => {
+            const filtered = nodes.filter(node => {
+              // Define excluded node types
+              const excludedTypes = ['start', 'result', 'textInput'];
+              if (node.type && excludedTypes.includes(node.type)) {
+                return false;
+              }
+              
+              // Define excluded component types (for input components)
+              const excludedComponentTypes = ['TextInput'];
+              const componentType = (node.data as any)?.componentType;
+              if (componentType && excludedComponentTypes.includes(componentType)) {
+                return false;
+              }
+              
+              // Define excluded title patterns (as a safety net)
+              const excludedTitlePatterns = ['Text Input', 'Start Node', 'Result Node'];
+              const title = (node.data as any)?.title || '';
+              if (excludedTitlePatterns.some(pattern => title.includes(pattern))) {
+                return false;
+              }
+              
+              // Only count custom nodes that passed all filters
+              // These are the actual processing nodes like CSV Loader, GCG Attack, ASR, etc.
+              return node.type === 'custom';
+            });
+            
+            return filtered.length;
+          })()}
           edgeCount={edges.length}
           onComponentSelect={handleComponentSelect}
         />

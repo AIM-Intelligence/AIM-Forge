@@ -855,10 +855,37 @@ class EnhancedFlowExecutor(FlowExecutor):
         node_outputs = {}
         result_nodes = {}
         
+        # Filter execution order to count only main processing components
+        # Exclude: start nodes, result nodes, and text input nodes
+        main_component_count = 0
+        main_component_indices = {}  # Map node_id to its index in main components
+        
+        for node_id in execution_order:
+            node = nodes.get(node_id, {})
+            node_type = node.get("type", "custom")
+            node_title = node.get("data", {}).get("title", "")
+            component_type = node.get("data", {}).get("componentType", "")
+            
+            # Check if this is a main processing component
+            is_main_component = (
+                node_type not in ["start", "result", "textInput"] and
+                component_type != "TextInput" and
+                "Text Input" not in node_title and
+                "Start Node" not in node_title and
+                "Result Node" not in node_title
+            )
+            
+            if is_main_component:
+                main_component_indices[node_id] = main_component_count
+                main_component_count += 1
+        
+        print(f"[EXECUTION] Total nodes: {len(execution_order)}, Main components: {main_component_count}")
+        print(f"[EXECUTION] Main component indices: {main_component_indices}")
+        
         # Send initial event
         yield {
             "type": "start",
-            "total_nodes": len(execution_order),
+            "total_nodes": main_component_count,  # Use filtered count
             "execution_order": execution_order,
             "timestamp": time.time()
         }
@@ -904,10 +931,13 @@ class EnhancedFlowExecutor(FlowExecutor):
                 print(f"[EXECUTION] Starting node {node_id}, type: {node_data.get('type')}")
                 
                 # Create async task for this node
+                # Get the main component index for this node (or -1 if not a main component)
+                main_index = main_component_indices.get(node_id, -1)
+                
                 task = asyncio.create_task(self._execute_node_streaming(
                     project_id, node_id, node_data, nodes, edges, 
                     node_outputs, execution_results, result_nodes,
-                    result_node_values, node_index, len(execution_order),
+                    result_node_values, main_index, main_component_count,
                     start_node_id, params, timeout_sec, halt_on_error
                 ))
                 tasks.append(task)
@@ -958,8 +988,8 @@ class EnhancedFlowExecutor(FlowExecutor):
         execution_results: Dict,
         result_nodes: Dict,
         result_node_values: Optional[Dict],
-        node_index: int,
-        total_nodes: int,
+        main_component_index: int,  # Index in main components (-1 if not a main component)
+        total_main_components: int,  # Total count of main components
         start_node_id: str,
         params: Optional[Dict] = None,
         timeout_sec: int = 30,
@@ -1063,15 +1093,20 @@ class EnhancedFlowExecutor(FlowExecutor):
                     result_nodes[node_id] = result.get("output")
             
             # Return node completion event
-            return {
-                "type": "node_complete",
-                "node_id": node_id,
-                "node_title": node_data.get("data", {}).get("title", "Unknown"),
-                "node_index": node_index + 1,
-                "total_nodes": total_nodes,
-                "result": result,
-                "timestamp": time.time()
-            }
+            # Only send progress updates for main components
+            if main_component_index >= 0:
+                return {
+                    "type": "node_complete",
+                    "node_id": node_id,
+                    "node_title": node_data.get("data", {}).get("title", "Unknown"),
+                    "node_index": main_component_index + 1,  # 1-based index for display
+                    "total_nodes": total_main_components,
+                    "result": result,
+                    "timestamp": time.time()
+                }
+            else:
+                # For auxiliary nodes (start, result, text input), don't send progress update
+                return None
             
         except Exception as e:
             # Return error event
@@ -1083,15 +1118,19 @@ class EnhancedFlowExecutor(FlowExecutor):
             }
             execution_results[node_id] = error_result
             
-            return {
-                "type": "node_complete",
-                "node_id": node_id,
-                "node_title": node_data.get("data", {}).get("title", "Unknown"),
-                "node_index": node_index + 1,
-                "total_nodes": total_nodes,
-                "result": error_result,
-                "timestamp": time.time()
-            }
+            # Only send error events for main components
+            if main_component_index >= 0:
+                return {
+                    "type": "node_complete",
+                    "node_id": node_id,
+                    "node_title": node_data.get("data", {}).get("title", "Unknown"),
+                    "node_index": main_component_index + 1,
+                    "total_nodes": total_main_components,
+                    "result": error_result,
+                    "timestamp": time.time()
+                }
+            else:
+                return None
     
     def get_store_info(self, project_id: str) -> Dict:
         """Get information about the object store for debugging"""
