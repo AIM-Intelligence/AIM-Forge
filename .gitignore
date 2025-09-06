@@ -5,6 +5,7 @@ AIM-RedLab
 .claude
 .vscode/
 .claude/
+.DS_Store
 
 CLAUDE.md
 CLAUDE.local.md
