@@ -581,6 +581,26 @@ def RunScript(data: str = "") -> Dict[str, Any]:
 - **Responsive design**: Ensure components work at different sizes
 - **Dark theme**: All components should use dark theme colors
 
+## Developing with AI
+
+When developing components with AI (Claude, GPT, etc.):
+
+📋 **See `AI_COMPONENT_PROMPTS.md`** file.
+
+This file contains:
+- Complete project structure and architecture details
+- Data transfer mechanisms (JSON serialization, object_store references)
+- All actually implemented component examples
+- Copy-and-paste ready prompts in Korean/English
+
+**How to use**:
+1. Open `AI_COMPONENT_PROMPTS.md` file
+2. Copy the entire Korean or English prompt
+3. Paste it in your first conversation with AI
+4. Request the component you want
+
+This allows AI to fully understand the project and generate accurate code.
+
 ## Troubleshooting
 
 ### Component doesn't appear in library
