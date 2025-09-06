@@ -258,3 +258,35 @@ def update_node_position(project_id: str, node_id: str, position: Dict[str, floa
         "node_id": node_id,
         "position": position
     }
+
+def update_node_data(project_id: str, node_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    """Update the data of a node in the project structure"""
+    from .project_structure import get_project_structure, save_project_structure
+    
+    # Get current structure
+    structure = get_project_structure(project_id)
+    
+    # Find and update node data
+    node_found = False
+    for node in structure['nodes']:
+        if node['id'] == node_id:
+            # Merge the new data with existing data
+            if 'data' not in node:
+                node['data'] = {}
+            node['data'].update(data)
+            node_found = True
+            updated_data = node['data']
+            break
+    
+    if not node_found:
+        raise ValueError(f"Node with ID '{node_id}' not found")
+    
+    # Save updated structure
+    save_project_structure(project_id, structure)
+    
+    return {
+        "success": True,
+        "message": f"Data updated for node '{node_id}'",
+        "node_id": node_id,
+        "data": updated_data
+    }

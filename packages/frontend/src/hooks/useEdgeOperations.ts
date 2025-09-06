@@ -2,8 +2,8 @@ import { useCallback, useEffect } from "react";
 import { addEdge, type Connection, type Edge, MarkerType } from "@xyflow/react";
 import { projectApi } from "../utils/api";
 import type { DefaultNodeType } from "../components/nodes/DefaultNode";
-import type { StartNodeType } from "../components/nodes/StartNode";
-import type { ResultNodeType } from "../components/nodes/ResultNode";
+import type { StartNodeType } from "../components/nodes/flow-control/StartNode";
+import type { ResultNodeType } from "../components/nodes/flow-control/ResultNode";
 
 // Union type for all node types
 type AnyNodeType = DefaultNodeType | StartNodeType | ResultNodeType;

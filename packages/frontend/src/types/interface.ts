@@ -26,6 +26,13 @@ export interface NodeData {
   outputs?: PortInfo[];        // Output ports
   viewCode?: () => void;       // Handler for view code button
   updateKey?: number;          // Force re-render when changed
+  value?: string;             // For TextInput nodes
+  dimensions?: {              // For resizable nodes
+    width: number;
+    height: number;
+  };
+  componentType?: string;     // Component type identifier
+  [key: string]: unknown;     // Allow additional properties
 }
 
 export interface EdgeMarkerEnd {

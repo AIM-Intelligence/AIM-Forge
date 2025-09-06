@@ -1,13 +1,18 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import clsx from "clsx";
 import { useParams } from "react-router-dom";
 import { useExecutionStore } from "../../../stores/executionStore";
+import { projectApi } from "../../../utils/api";
 
 export type ResultNodeType = Node<{
   title: string;
   description: string;
   projectTitle?: string;
+  dimensions?: {
+    width: number;
+    height: number;
+  };
 }>;
 
 export default function ResultNode(props: NodeProps<ResultNodeType>) {
@@ -34,9 +39,14 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
         } catch (e) {
           console.error("Failed to parse saved dimensions:", e);
         }
+      } else if (props.data?.dimensions) {
+        // Use backend dimensions if no localStorage value
+        setDimensions(props.data.dimensions);
+        // Save to localStorage for consistency
+        localStorage.setItem(dimensionsKey, JSON.stringify(props.data.dimensions));
       }
     }
-  }, [projectId, props.id]);
+  }, [projectId, props.id, props.data?.dimensions]);
 
   // Update text when execution results change
   useEffect(() => {
@@ -162,6 +172,21 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
     URL.revokeObjectURL(url);
   };
 
+  // Sync data with backend
+  const syncWithBackend = useCallback(async (data: Record<string, unknown>) => {
+    if (!projectId) return;
+    
+    try {
+      await projectApi.updateNodeData({
+        project_id: projectId,
+        node_id: props.id,
+        data: data
+      });
+    } catch (error) {
+      console.error("Failed to sync with backend:", error);
+    }
+  }, [projectId, props.id]);
+
   const handleResize = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -192,6 +217,9 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
       if (projectId) {
         const dimensionsKey = `result_dimensions_${projectId}_${props.id}`;
         localStorage.setItem(dimensionsKey, JSON.stringify({ width: finalWidth, height: finalHeight }));
+        
+        // Also sync dimensions with backend
+        syncWithBackend({ dimensions: { width: finalWidth, height: finalHeight } });
       }
     };
 

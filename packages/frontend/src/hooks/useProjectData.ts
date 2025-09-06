@@ -2,8 +2,8 @@ import { useState, useEffect } from "react";
 import { projectApi, codeApi } from "../utils/api";
 import type { ProjectStructure, ProjectNode, ProjectEdge } from "../types";
 import type { DefaultNodeType } from "../components/nodes/DefaultNode";
-import type { StartNodeType } from "../components/nodes/StartNode";
-import type { ResultNodeType } from "../components/nodes/ResultNode";
+import type { StartNodeType } from "../components/nodes/flow-control/StartNode";
+import type { ResultNodeType } from "../components/nodes/flow-control/ResultNode";
 import type { Edge, MarkerType } from "@xyflow/react";
 
 // Union type for all node types
@@ -81,18 +81,28 @@ export function useProjectData(
                   id: node.id,
                   type: 'result',
                   position: node.position,
-                  data: baseData,
+                  data: {
+                    ...baseData,
+                    dimensions: node.data.dimensions,
+                  },
                 } as ResultNodeType;
               } else {
+                // Check if this is a TextInput component
+                const isTextInput = node.data.componentType === 'TextInput' || 
+                                  node.data.title?.startsWith('Text Input');
+                
                 return {
                   id: node.id,
-                  type: 'custom',
+                  type: isTextInput ? 'textInput' : 'custom',
                   position: node.position,
                   data: {
                     ...baseData,
                     file: node.data.file,
+                    value: node.data.value,
+                    dimensions: node.data.dimensions,
+                    componentType: node.data.componentType,
                     viewCode: () => {
-                      onNodeClick(node.id, node.data.title || `Node ${node.id}`, node.data.file);
+                      onNodeClick(node.id, node.data.title || `Node ${node.id}`);
                     },
                   },
                 } as DefaultNodeType;

@@ -37,9 +37,6 @@ export default function StartNode(props: NodeProps<StartNodeType>) {
   });
   const { projectId } = useParams<{ projectId: string }>();
   const setExecuting = useExecutionStore((state) => state.setExecuting);
-  const setExecutionResults = useExecutionStore(
-    (state) => state.setExecutionResults
-  );
   const setToastMessage = useExecutionStore((state) => state.setToastMessage);
   const resultNodes = useExecutionStore((state) => state.resultNodes);
 

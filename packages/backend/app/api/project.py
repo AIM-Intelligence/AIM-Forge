@@ -61,6 +61,11 @@ class UpdateNodePositionRequest(BaseModel):
     node_id: str
     position: Dict[str, float]
 
+class UpdateNodeDataRequest(BaseModel):
+    project_id: str
+    node_id: str
+    data: Dict[str, Any]
+
 class CreateEdgeRequest(BaseModel):
     project_id: str
     edge_id: str
@@ -234,6 +239,22 @@ async def update_node_position(request: UpdateNodePositionRequest):
             request.project_id,
             request.node_id,
             request.position
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/updatenode/data")
+async def update_node_data(request: UpdateNodeDataRequest):
+    """Update node data (including value, dimensions, etc.) in project structure"""
+    try:
+        result = node_operations.update_node_data(
+            request.project_id,
+            request.node_id,
+            request.data
         )
         return result
     except ValueError as e:

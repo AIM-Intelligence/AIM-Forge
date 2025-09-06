@@ -36,10 +36,10 @@ const ROW_GAP = Math.max(0, PORT_SPACING - ROW_H); // => ROW_H + ROW_GAP = PORT_
 export default function DefaultNode(props: NodeProps & { data: NodeData }) {
   // Check if this is a special component type
   const componentType = props.data?.componentType;
-  if (componentType) {
+  if (componentType && typeof componentType === 'string') {
     const SpecialComponent = getComponent(componentType);
     if (SpecialComponent) {
-      return <SpecialComponent {...props} />;
+      return <SpecialComponent {...props as any} />;
     }
   }
   
@@ -47,7 +47,7 @@ export default function DefaultNode(props: NodeProps & { data: NodeData }) {
   if (props.data?.title?.startsWith("Text Input")) {
     const TextInputComponent = getComponent('TextInput');
     if (TextInputComponent) {
-      return <TextInputComponent {...props} />;
+      return <TextInputComponent {...props as any} />;
     }
   }
   

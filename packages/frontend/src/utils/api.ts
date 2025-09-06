@@ -146,6 +146,18 @@ export const projectApi = {
     });
   },
 
+  // Update node data (value, dimensions, etc.)
+  async updateNodeData(data: {
+    project_id: string;
+    node_id: string;
+    data: Record<string, unknown>;
+  }): Promise<{ success: boolean; message?: string; data?: Record<string, unknown> }> {
+    return apiCall("/project/updatenode/data", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  },
+
   // Create edge
   async createEdge(data: CreateEdgeRequest): Promise<CreateEdgeResponse> {
     return apiCall<CreateEdgeResponse>("/project/makeedge", {

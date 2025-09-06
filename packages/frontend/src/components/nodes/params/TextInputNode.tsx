@@ -1,13 +1,20 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import clsx from "clsx";
 import { useParams } from "react-router-dom";
 import { useExecutionStore } from "../../../stores/executionStore";
+import { projectApi } from "../../../utils/api";
 
 export type TextInputNodeType = Node<{
   title: string;
   description: string;
   projectTitle?: string;
+  value?: string;
+  dimensions?: {
+    width: number;
+    height: number;
+  };
+  componentType?: string;
 }>;
 
 export default function TextInputNode(props: NodeProps<TextInputNodeType>) {
@@ -18,6 +25,7 @@ export default function TextInputNode(props: NodeProps<TextInputNodeType>) {
   const nodeRef = useRef<HTMLDivElement>(null);
   const { projectId } = useParams<{ projectId: string }>();
   const setNodeResult = useExecutionStore((state) => state.setNodeResult);
+  const [saveTimeout, setSaveTimeout] = useState<NodeJS.Timeout | null>(null);
 
   // Load saved dimensions from localStorage on mount
   useEffect(() => {
@@ -31,9 +39,14 @@ export default function TextInputNode(props: NodeProps<TextInputNodeType>) {
         } catch (e) {
           console.error("Failed to parse saved dimensions:", e);
         }
+      } else if (props.data?.dimensions) {
+        // Use backend dimensions if no localStorage value
+        setDimensions(props.data.dimensions);
+        // Save to localStorage for consistency
+        localStorage.setItem(dimensionsKey, JSON.stringify(props.data.dimensions));
       }
     }
-  }, [projectId, props.id]);
+  }, [projectId, props.id, props.data?.dimensions]);
 
   // Load saved value from localStorage on mount and when id changes
   useEffect(() => {
@@ -44,12 +57,33 @@ export default function TextInputNode(props: NodeProps<TextInputNodeType>) {
         setUserText(savedValue);
         // Also set in execution store so it can be used immediately
         setNodeResult(props.id, savedValue);
+      } else if (props.data?.value) {
+        // Use backend value if no localStorage value
+        setUserText(props.data.value);
+        setNodeResult(props.id, props.data.value);
+        // Save to localStorage for consistency
+        localStorage.setItem(storageKey, props.data.value);
       } else {
         // Even if no saved value, initialize with empty string
         setNodeResult(props.id, "");
       }
     }
-  }, [projectId, props.id, setNodeResult]);
+  }, [projectId, props.id, props.data?.value, setNodeResult]);
+
+  // Sync data with backend (debounced)
+  const syncWithBackend = useCallback(async (data: Record<string, unknown>) => {
+    if (!projectId) return;
+    
+    try {
+      await projectApi.updateNodeData({
+        project_id: projectId,
+        node_id: props.id,
+        data: data
+      });
+    } catch (error) {
+      console.error("Failed to sync with backend:", error);
+    }
+  }, [projectId, props.id]);
 
   // Handle text change and save to localStorage
   const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -64,6 +98,15 @@ export default function TextInputNode(props: NodeProps<TextInputNodeType>) {
     
     // Store in execution store for flow execution
     setNodeResult(props.id, newText);
+
+    // Debounced backend sync (500ms delay)
+    if (saveTimeout) {
+      clearTimeout(saveTimeout);
+    }
+    const timeout = setTimeout(() => {
+      syncWithBackend({ value: newText });
+    }, 500);
+    setSaveTimeout(timeout);
   };
 
   const handleDelete = (e: React.MouseEvent) => {
@@ -115,6 +158,9 @@ export default function TextInputNode(props: NodeProps<TextInputNodeType>) {
       if (projectId) {
         const dimensionsKey = `textInput_dimensions_${projectId}_${props.id}`;
         localStorage.setItem(dimensionsKey, JSON.stringify({ width: finalWidth, height: finalHeight }));
+        
+        // Also sync dimensions with backend
+        syncWithBackend({ dimensions: { width: finalWidth, height: finalHeight } });
       }
     };
 
