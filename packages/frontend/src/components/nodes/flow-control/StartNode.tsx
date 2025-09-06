@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import clsx from "clsx";
 import { useExecutionStore } from "../../../stores/executionStore";
+import { useNodeValueStore } from "../../../stores/nodeValueStore";
 import { useParams } from "react-router-dom";
 import { projectApi } from "../../../utils/api";
 import LoadingModal from "../../modal/LoadingModal";
@@ -39,6 +40,7 @@ export default function StartNode(props: NodeProps<StartNodeType>) {
   const setExecuting = useExecutionStore((state) => state.setExecuting);
   const setToastMessage = useExecutionStore((state) => state.setToastMessage);
   const resultNodes = useExecutionStore((state) => state.resultNodes);
+  const getAllNodeValues = useNodeValueStore((state) => state.getAllNodeValues);
 
   const handleRunFlow = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -63,8 +65,11 @@ export default function StartNode(props: NodeProps<StartNodeType>) {
       errorDetails: undefined,
     });
 
-    // Clear previous results
-    useExecutionStore.getState().clearResults();
+    // Don't clear results to preserve values between flows
+    // useExecutionStore.getState().clearResults();
+
+    // Get all node values (TextInput, ResultNode, etc.)
+    const allNodeValues = getAllNodeValues();
 
     try {
       // Use SSE for streaming results
@@ -73,7 +78,7 @@ export default function StartNode(props: NodeProps<StartNodeType>) {
           project_id: projectId,
           start_node_id: props.id,
           params: {},
-          result_node_values: resultNodes,
+          node_values: allNodeValues,  // Use all node values instead of just resultNodes
           max_workers: 4,
           timeout_sec: 30,
           halt_on_error: true,

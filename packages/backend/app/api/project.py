@@ -84,7 +84,8 @@ class ExecuteFlowRequest(BaseModel):
     project_id: str
     start_node_id: Optional[str] = None
     params: Dict[str, Any] = Field(default_factory=dict)
-    result_node_values: Dict[str, Any] = Field(default_factory=dict)
+    result_node_values: Dict[str, Any] = Field(default_factory=dict)  # Deprecated, kept for compatibility
+    node_values: Dict[str, Any] = Field(default_factory=dict)  # New: all node values
     max_workers: int = Field(default=4, ge=1, le=10)
     timeout_sec: int = Field(default=30, ge=1, le=300)
     halt_on_error: bool = True
@@ -303,12 +304,15 @@ async def execute_flow(request: ExecuteFlowRequest):
         # Use global executor to maintain object store
         executor = get_executor()
         
+        # Merge node_values with result_node_values for backward compatibility
+        all_node_values = {**request.result_node_values, **request.node_values}
+        
         # Execute the flow
         result = await executor.execute_flow(
             project_id=request.project_id,
             start_node_id=request.start_node_id,
             params=request.params,
-            result_node_values=request.result_node_values,
+            result_node_values=all_node_values,  # Use merged values
             max_workers=request.max_workers,
             timeout_sec=request.timeout_sec,
             halt_on_error=request.halt_on_error
@@ -331,12 +335,15 @@ async def execute_flow_stream(request: ExecuteFlowRequest):
         try:
             executor = get_executor()
             
+            # Merge node_values with result_node_values for backward compatibility
+            all_node_values = {**request.result_node_values, **request.node_values}
+            
             # Execute flow with streaming
             async for node_result in executor.execute_flow_streaming(
                 project_id=request.project_id,
                 start_node_id=request.start_node_id,
                 params=request.params,
-                result_node_values=request.result_node_values,
+                result_node_values=all_node_values,  # Use merged values
                 max_workers=request.max_workers,
                 timeout_sec=request.timeout_sec,
                 halt_on_error=request.halt_on_error

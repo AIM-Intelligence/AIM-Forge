@@ -232,7 +232,8 @@ export interface ExecuteFlowRequest {
   project_id: string;
   start_node_id?: string;
   params?: Record<string, unknown>;
-  result_node_values?: Record<string, unknown>;
+  result_node_values?: Record<string, unknown>;  // Deprecated
+  node_values?: Record<string, unknown>;  // New: all node values
   max_workers?: number;
   timeout_sec?: number;
   halt_on_error?: boolean;

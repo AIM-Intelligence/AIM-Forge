@@ -3,6 +3,7 @@ import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import clsx from "clsx";
 import { useParams } from "react-router-dom";
 import { useExecutionStore } from "../../../stores/executionStore";
+import { useNodeValueStore } from "../../../stores/nodeValueStore";
 import { projectApi } from "../../../utils/api";
 
 export type ResultNodeType = Node<{
@@ -25,6 +26,7 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
   const getNodeResult = useExecutionStore((state) => state.getNodeResult);
   const runId = useExecutionStore((state) => state.runId);
   const executionResults = useExecutionStore((state) => state.executionResults);
+  const { setNodeValue, getNodeValue } = useNodeValueStore();
 
   // Load saved dimensions from localStorage on mount
   useEffect(() => {
@@ -77,6 +79,8 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
       }
       // Already truncated by backend if needed
       setUserText(preview);
+      // Store in nodeValueStore for reuse
+      setNodeValue(props.id, result.raw_value || result);
     }
   }, [executionResults, props.id, getNodeResult]);
 
@@ -84,11 +88,13 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
     
-    // Clear localStorage dimensions when deleting
+    // Clear localStorage dimensions and nodeValueStore when deleting
     if (projectId) {
       const dimensionsKey = `result_dimensions_${projectId}_${props.id}`;
       localStorage.removeItem(dimensionsKey);
     }
+    // Clear from nodeValueStore
+    useNodeValueStore.getState().clearNodeValue(props.id);
     // 부모 컴포넌트에서 처리하도록 이벤트 전달
     const deleteEvent = new CustomEvent("deleteNode", {
       detail: { id: props.id },

@@ -3,6 +3,7 @@ import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import clsx from "clsx";
 import { useParams } from "react-router-dom";
 import { useExecutionStore } from "../../../stores/executionStore";
+import { useNodeValueStore } from "../../../stores/nodeValueStore";
 import { projectApi } from "../../../utils/api";
 
 export type TextInputNodeType = Node<{
@@ -25,6 +26,7 @@ export default function TextInputNode(props: NodeProps<TextInputNodeType>) {
   const nodeRef = useRef<HTMLDivElement>(null);
   const { projectId } = useParams<{ projectId: string }>();
   const setNodeResult = useExecutionStore((state) => state.setNodeResult);
+  const { setNodeValue, getNodeValue } = useNodeValueStore();
   const [saveTimeout, setSaveTimeout] = useState<NodeJS.Timeout | null>(null);
 
   // Load saved dimensions from localStorage on mount
@@ -55,17 +57,20 @@ export default function TextInputNode(props: NodeProps<TextInputNodeType>) {
       const savedValue = localStorage.getItem(storageKey);
       if (savedValue) {
         setUserText(savedValue);
-        // Also set in execution store so it can be used immediately
+        // Set in both stores for availability
         setNodeResult(props.id, savedValue);
+        setNodeValue(props.id, savedValue);
       } else if (props.data?.value) {
         // Use backend value if no localStorage value
         setUserText(props.data.value);
         setNodeResult(props.id, props.data.value);
+        setNodeValue(props.id, props.data.value);
         // Save to localStorage for consistency
         localStorage.setItem(storageKey, props.data.value);
       } else {
         // Even if no saved value, initialize with empty string
         setNodeResult(props.id, "");
+        setNodeValue(props.id, "");
       }
     }
   }, [projectId, props.id, props.data?.value, setNodeResult]);
@@ -96,8 +101,9 @@ export default function TextInputNode(props: NodeProps<TextInputNodeType>) {
       localStorage.setItem(storageKey, newText);
     }
     
-    // Store in execution store for flow execution
+    // Store in both stores for flow execution
     setNodeResult(props.id, newText);
+    setNodeValue(props.id, newText);
 
     // Debounced backend sync (500ms delay)
     if (saveTimeout) {
@@ -112,13 +118,15 @@ export default function TextInputNode(props: NodeProps<TextInputNodeType>) {
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
     
-    // Clear localStorage when deleting
+    // Clear localStorage and nodeValueStore when deleting
     if (projectId) {
       const storageKey = `textInput_${projectId}_${props.id}`;
       localStorage.removeItem(storageKey);
       const dimensionsKey = `textInput_dimensions_${projectId}_${props.id}`;
       localStorage.removeItem(dimensionsKey);
     }
+    // Clear from nodeValueStore
+    useNodeValueStore.getState().clearNodeValue(props.id);
     
     // Dispatch delete event
     const deleteEvent = new CustomEvent("deleteNode", {
