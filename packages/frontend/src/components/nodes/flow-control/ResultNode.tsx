@@ -28,7 +28,7 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
   const executionResults = useExecutionStore((state) => state.executionResults);
   const { setNodeValue, getNodeValue } = useNodeValueStore();
 
-  // Load saved dimensions from localStorage on mount
+  // Load saved dimensions and value from localStorage on mount
   useEffect(() => {
     if (projectId) {
       const dimensionsKey = `result_dimensions_${projectId}_${props.id}`;
@@ -46,25 +46,51 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
         // Save to localStorage for consistency
         localStorage.setItem(dimensionsKey, JSON.stringify(props.data.dimensions));
       }
+      
+      // Load saved value from nodeValueStore if no execution result
+      const savedValue = getNodeValue(props.id);
+      if (savedValue !== undefined && savedValue !== null && !getNodeResult(props.id)) {
+        // Format saved value for display
+        let preview = "";
+        if (typeof savedValue === "object") {
+          preview = JSON.stringify(savedValue, null, 2);
+        } else {
+          preview = String(savedValue);
+        }
+        setUserText(preview);
+      }
     }
-  }, [projectId, props.id, props.data?.dimensions]);
+  }, [projectId, props.id, props.data?.dimensions, getNodeValue, getNodeResult]);
 
   // Update text when execution results change
   useEffect(() => {
     const result = getNodeResult(props.id);
     if (result !== null && result !== undefined) {
-      // Check if result has the new format with display and full_ref
+      // The actual value that will be passed to downstream nodes
+      let actualValue = result;
       let displayValue = result;
       
-      if (typeof result === "object" && result !== null && "display" in result) {
-        // New format with separate display and full data
-        displayValue = result.display;
-        // Store the full reference for download
-        (nodeRef.current as any)._fullDataRef = result.full_ref;
-        (nodeRef.current as any)._rawValue = result.raw_value;
-        (nodeRef.current as any)._isTruncated = result.is_truncated;
+      // Check if result has display_metadata (new format from backend)
+      const executionResult = executionResults[props.id];
+      if (executionResult?.display_metadata) {
+        // New format with display metadata
+        const metadata = executionResult.display_metadata;
+        displayValue = metadata.display;
+        actualValue = result; // The output is already the actual value
+        // Store metadata for download
+        (nodeRef.current as any)._fullDataRef = metadata.full_ref;
+        (nodeRef.current as any)._rawValue = metadata.raw_value || result;
+        (nodeRef.current as any)._isTruncated = metadata.is_truncated;
+      } else if (typeof result === "object" && result !== null && "display" in result) {
+        // Old format (fallback)
+        const oldFormatResult = result as any;
+        displayValue = oldFormatResult.display;
+        actualValue = oldFormatResult.raw_value || result;
+        (nodeRef.current as any)._fullDataRef = oldFormatResult.full_ref;
+        (nodeRef.current as any)._rawValue = oldFormatResult.raw_value;
+        (nodeRef.current as any)._isTruncated = oldFormatResult.is_truncated;
       } else {
-        // Old format or direct value
+        // Direct value
         (nodeRef.current as any)._fullDataRef = null;
         (nodeRef.current as any)._rawValue = result;
         (nodeRef.current as any)._isTruncated = false;
@@ -79,19 +105,28 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
       }
       // Already truncated by backend if needed
       setUserText(preview);
-      // Store in nodeValueStore for reuse
-      setNodeValue(props.id, result.raw_value || result);
+      
+      // Store the actual value (not display metadata) in nodeValueStore for reuse
+      setNodeValue(props.id, actualValue);
+      
+      // Also save to localStorage for persistence
+      if (projectId) {
+        const storageKey = `result_${projectId}_${props.id}`;
+        localStorage.setItem(storageKey, JSON.stringify(actualValue));
+      }
     }
-  }, [executionResults, props.id, getNodeResult]);
+  }, [executionResults, props.id, getNodeResult, setNodeValue, projectId]);
 
 
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
     
-    // Clear localStorage dimensions and nodeValueStore when deleting
+    // Clear localStorage dimensions, value and nodeValueStore when deleting
     if (projectId) {
       const dimensionsKey = `result_dimensions_${projectId}_${props.id}`;
+      const valueKey = `result_${projectId}_${props.id}`;
       localStorage.removeItem(dimensionsKey);
+      localStorage.removeItem(valueKey);
     }
     // Clear from nodeValueStore
     useNodeValueStore.getState().clearNodeValue(props.id);

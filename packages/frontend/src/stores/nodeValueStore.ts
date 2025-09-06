@@ -60,8 +60,22 @@ export const useNodeValueStore = create<NodeValueState>((set, get) => ({
       }
     });
     
-    // Load other persistent node values if needed
-    // (ResultNode values are typically not persisted in localStorage)
+    // Load ResultNode values
+    const resultPattern = new RegExp(`^result_${projectId}_(.+)$`);
+    allKeys.forEach(key => {
+      const match = key.match(resultPattern);
+      if (match) {
+        const nodeId = match[1];
+        const value = localStorage.getItem(key);
+        if (value !== null) {
+          try {
+            nodeValues[nodeId] = JSON.parse(value);
+          } catch {
+            nodeValues[nodeId] = value;
+          }
+        }
+      }
+    });
     
     set({ nodeValues });
   },

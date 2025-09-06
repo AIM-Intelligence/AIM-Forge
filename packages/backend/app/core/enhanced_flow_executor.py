@@ -94,8 +94,21 @@ class EnhancedFlowExecutor(FlowExecutor):
         
         # Handle result nodes
         if node_type == "result":
-            # Result nodes are read-only and just display input
-            print(f"[RESULT NODE {node_id}] Received input_data: {str(input_data)[:200]}")
+            # Check if there's a stored value for this result node
+            stored_value = result_node_values.get(node_id)
+            
+            # If we have stored value but no input, use the stored value
+            if stored_value is not None and input_data is None:
+                print(f"[RESULT NODE {node_id}] Using stored value: {str(stored_value)[:200]}")
+                input_data = stored_value
+            elif input_data is not None:
+                # We have new input, this will update the stored value
+                print(f"[RESULT NODE {node_id}] Received input_data: {str(input_data)[:200]}")
+            else:
+                # No stored value and no input
+                print(f"[RESULT NODE {node_id}] No input or stored value")
+                input_data = ""
+            
             print(f"[RESULT NODE {node_id}] Input type: {type(input_data)}")
             
             # Prepare both display and full data
@@ -139,19 +152,35 @@ class EnhancedFlowExecutor(FlowExecutor):
                     except:
                         display_output = str(input_data)[:1500]
                 
-            # Store both display and reference in output
-            output_data = {
-                "display": display_output,  # For display in UI
-                "full_ref": full_data_ref,  # Reference for full data (if exists)
+            # For ResultNode, we need to pass through the actual value
+            # while also providing display information
+            # The output should be the actual value (for pass-through)
+            # with display metadata attached
+            
+            # Pass through the actual input data as output
+            # so it can be used by downstream nodes
+            actual_output = input_data
+            
+            # If input_data was a reference, unwrap it for output
+            if isinstance(input_data, dict) and input_data.get("type") == "reference":
+                actual_output = self._unwrap_input(project_id, input_data)
+            
+            # Create display metadata for frontend
+            display_metadata = {
+                "display": display_output,
+                "full_ref": full_data_ref,
                 "is_truncated": isinstance(display_output, str) and display_output.endswith("..."),
-                "raw_value": input_data if not isinstance(input_data, dict) or input_data.get("type") != "reference" else None
+                "raw_value": actual_output
             }
-                
+            
+            # Store display metadata in a special key that frontend can recognize
+            # but pass the actual value as the main output
             return {
                 "status": "success",
-                "output": output_data,
+                "output": actual_output,  # Pass through the actual value
+                "display_metadata": display_metadata,  # Metadata for UI display
                 "execution_time_ms": 0,
-                "logs": "Result node - displaying input data",
+                "logs": "Result node - passing through data",
             }
         
         # Handle custom nodes with in-process execution

@@ -6,6 +6,12 @@ interface ExecutionResult {
   error?: string;
   execution_time_ms?: number;
   logs?: string;
+  display_metadata?: {
+    display: unknown;
+    full_ref?: string;
+    is_truncated?: boolean;
+    raw_value?: unknown;
+  };
 }
 
 interface ExecutionState {

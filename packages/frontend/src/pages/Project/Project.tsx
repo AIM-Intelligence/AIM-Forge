@@ -12,11 +12,20 @@ import { useEdgeOperations } from "../../hooks/useEdgeOperations";
 import { type ComponentTemplate } from "../../config/componentLibrary";
 import { codeApi } from "../../utils/api";
 import { useExecutionStore } from "../../stores/executionStore";
+import { useNodeValueStore } from "../../stores/nodeValueStore";
 
 export default function Project() {
   const { projectId } = useParams<{ projectId: string }>();
   const toastMessage = useExecutionStore((state) => state.toastMessage);
   const setToastMessage = useExecutionStore((state) => state.setToastMessage);
+  const loadFromLocalStorage = useNodeValueStore((state) => state.loadFromLocalStorage);
+
+  // Load node values from localStorage when project loads
+  useEffect(() => {
+    if (projectId) {
+      loadFromLocalStorage(projectId);
+    }
+  }, [projectId, loadFromLocalStorage]);
 
   // UI State
   const [isIdeModalOpen, setIsIdeModalOpen] = useState(false);
