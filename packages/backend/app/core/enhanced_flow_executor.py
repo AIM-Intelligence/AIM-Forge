@@ -94,78 +94,65 @@ class EnhancedFlowExecutor(FlowExecutor):
         
         # Handle result nodes
         if node_type == "result":
-            # Check if this Result node has a stored value (user typed text)
-            stored_value = result_node_values.get(node_id) if result_node_values else None
+            # Result nodes are read-only and just display input
+            print(f"[RESULT NODE {node_id}] Received input_data: {str(input_data)[:200]}")
+            print(f"[RESULT NODE {node_id}] Input type: {type(input_data)}")
             
-            # Only use stored value if it's not None, not empty string, not empty list, and not 0
-            if stored_value is not None and stored_value != "" and stored_value != [] and stored_value != 0:
-                # Use the stored value as output
-                return {
-                    "status": "success",
-                    "output": stored_value,
-                    "execution_time_ms": 0,
-                    "logs": "Result node - using stored text value",
-                }
-            else:
-                # No stored value, pass through input
-                print(f"[RESULT NODE {node_id}] Received input_data: {str(input_data)[:200]}")
-                print(f"[RESULT NODE {node_id}] Input type: {type(input_data)}")
+            # Prepare both display and full data
+            display_output = input_data
+            full_data_ref = None
+            
+            # Handle reference objects specially for Result nodes
+            if isinstance(input_data, dict) and input_data.get("type") == "reference":
+                # Store the reference for full data access
+                full_data_ref = input_data.get("ref")
                 
-                # Prepare both display and full data
-                display_output = input_data
-                full_data_ref = None
+                # Unwrap the reference to get actual value
+                unwrapped = self._unwrap_input(project_id, input_data)
                 
-                # Handle reference objects specially for Result nodes
-                if isinstance(input_data, dict) and input_data.get("type") == "reference":
-                    # Store the reference for full data access
-                    full_data_ref = input_data.get("ref")
-                    
-                    # Unwrap the reference to get actual value
-                    unwrapped = self._unwrap_input(project_id, input_data)
-                    
-                    # Apply size limit to prevent huge outputs
-                    if isinstance(unwrapped, str):
-                        display_output = unwrapped[:1500] + ("..." if len(unwrapped) > 1500 else "")
-                    elif isinstance(unwrapped, (dict, list)):
-                        # Convert to JSON for readable display
-                        import json
-                        try:
-                            json_str = json.dumps(unwrapped, indent=2, ensure_ascii=False)
-                            display_output = json_str[:1500] + ("..." if len(json_str) > 1500 else "")
-                        except:
-                            # Fallback to string representation
-                            display_output = str(unwrapped)[:1500]
-                    else:
+                # Apply size limit to prevent huge outputs
+                if isinstance(unwrapped, str):
+                    display_output = unwrapped[:1500] + ("..." if len(unwrapped) > 1500 else "")
+                elif isinstance(unwrapped, (dict, list)):
+                    # Convert to JSON for readable display
+                    import json
+                    try:
+                        json_str = json.dumps(unwrapped, indent=2, ensure_ascii=False)
+                        display_output = json_str[:1500] + ("..." if len(json_str) > 1500 else "")
+                    except:
+                        # Fallback to string representation
                         display_output = str(unwrapped)[:1500]
                 else:
-                    # Not a reference, check if it needs truncation
-                    if isinstance(input_data, str) and len(input_data) > 1500:
-                        display_output = input_data[:1500] + "..."
-                    elif isinstance(input_data, (dict, list)):
-                        import json
-                        try:
-                            json_str = json.dumps(input_data, indent=2, ensure_ascii=False)
-                            if len(json_str) > 1500:
-                                display_output = json_str[:1500] + "..."
-                            else:
-                                display_output = json_str
-                        except:
-                            display_output = str(input_data)[:1500]
-                    
-                # Store both display and reference in output
-                output_data = {
-                    "display": display_output,  # For display in UI
-                    "full_ref": full_data_ref,  # Reference for full data (if exists)
-                    "is_truncated": isinstance(display_output, str) and display_output.endswith("..."),
-                    "raw_value": input_data if not isinstance(input_data, dict) or input_data.get("type") != "reference" else None
-                }
-                    
-                return {
-                    "status": "success",
-                    "output": output_data,
-                    "execution_time_ms": 0,
-                    "logs": "Result node - displaying input data",
-                }
+                    display_output = str(unwrapped)[:1500]
+            else:
+                # Not a reference, check if it needs truncation
+                if isinstance(input_data, str) and len(input_data) > 1500:
+                    display_output = input_data[:1500] + "..."
+                elif isinstance(input_data, (dict, list)):
+                    import json
+                    try:
+                        json_str = json.dumps(input_data, indent=2, ensure_ascii=False)
+                        if len(json_str) > 1500:
+                            display_output = json_str[:1500] + "..."
+                        else:
+                            display_output = json_str
+                    except:
+                        display_output = str(input_data)[:1500]
+                
+            # Store both display and reference in output
+            output_data = {
+                "display": display_output,  # For display in UI
+                "full_ref": full_data_ref,  # Reference for full data (if exists)
+                "is_truncated": isinstance(display_output, str) and display_output.endswith("..."),
+                "raw_value": input_data if not isinstance(input_data, dict) or input_data.get("type") != "reference" else None
+            }
+                
+            return {
+                "status": "success",
+                "output": output_data,
+                "execution_time_ms": 0,
+                "logs": "Result node - displaying input data",
+            }
         
         # Handle custom nodes with in-process execution
         try:
@@ -847,13 +834,110 @@ class EnhancedFlowExecutor(FlowExecutor):
             "timestamp": time.time()
         }
         
-        # Execute nodes in order
+        # Calculate dependencies for each node
+        dependencies = defaultdict(set)
+        for edge in edges:
+            if edge["source"] in reachable_nodes and edge["target"] in reachable_nodes:
+                dependencies[edge["target"]].add(edge["source"])
+        
+        # Execute nodes with dependency-aware parallelism
         print(f"[EXECUTION] Order: {execution_order}")
         print(f"[EXECUTION] Result node values: {result_node_values}")
-        for idx, node_id in enumerate(execution_order):
-            node_data = nodes[node_id]
-            print(f"[EXECUTION] Executing node {node_id}, type: {node_data.get('type')}")
+        print(f"[EXECUTION] Dependencies: {dict(dependencies)}")
+        
+        # Track which nodes are currently executing
+        executing_nodes = set()
+        completed_nodes = set()
+        node_index = 0
+        
+        # Process nodes in levels (nodes that can execute in parallel)
+        while len(completed_nodes) < len(execution_order):
+            # Find nodes that can execute now (dependencies satisfied)
+            ready_nodes = []
+            for node_id in execution_order:
+                if node_id not in completed_nodes and node_id not in executing_nodes:
+                    # Check if all dependencies are completed
+                    if dependencies[node_id].issubset(completed_nodes):
+                        ready_nodes.append(node_id)
             
+            if not ready_nodes:
+                # Wait a bit if no nodes are ready
+                await asyncio.sleep(0.01)
+                continue
+            
+            # Execute ready nodes in parallel
+            tasks = []
+            task_to_node = {}  # Map task to node_id for tracking
+            
+            for node_id in ready_nodes:
+                executing_nodes.add(node_id)
+                node_data = nodes[node_id]
+                print(f"[EXECUTION] Starting node {node_id}, type: {node_data.get('type')}")
+                
+                # Create async task for this node
+                task = asyncio.create_task(self._execute_node_streaming(
+                    project_id, node_id, node_data, nodes, edges, 
+                    node_outputs, execution_results, result_nodes,
+                    result_node_values, node_index, len(execution_order),
+                    start_node_id, params, timeout_sec, halt_on_error
+                ))
+                tasks.append(task)
+                task_to_node[task] = node_id
+                node_index += 1
+            
+            # Wait for all tasks to complete and yield results as they finish
+            pending_tasks = set(tasks)
+            while pending_tasks:
+                # Wait for at least one task to complete
+                done, pending_tasks = await asyncio.wait(
+                    pending_tasks, 
+                    return_when=asyncio.FIRST_COMPLETED
+                )
+                
+                # Process completed tasks
+                for completed_task in done:
+                    result = await completed_task
+                    node_id = task_to_node[completed_task]
+                    
+                    if result:
+                        yield result
+                    
+                    executing_nodes.remove(node_id)
+                    completed_nodes.add(node_id)
+                    print(f"[EXECUTION] Completed node {node_id}")
+        
+        # Send complete event
+        yield {
+            "type": "complete",
+            "execution_results": execution_results,
+            "result_nodes": result_nodes,
+            "execution_order": execution_order,
+            "total_execution_time_ms": round((time.time() - start_time) * 1000),
+            "timestamp": time.time()
+        }
+        
+        return
+    
+    async def _execute_node_streaming(
+        self,
+        project_id: str,
+        node_id: str,
+        node_data: Dict,
+        nodes: Dict,
+        edges: List,
+        node_outputs: Dict,
+        execution_results: Dict,
+        result_nodes: Dict,
+        result_node_values: Optional[Dict],
+        node_index: int,
+        total_nodes: int,
+        start_node_id: str,
+        params: Optional[Dict] = None,
+        timeout_sec: int = 30,
+        halt_on_error: bool = True
+    ):
+        """Execute a single node and return streaming result"""
+        try:
             # Prepare input data
             input_data = None
             target_handles = {}
@@ -949,38 +1033,36 @@ class EnhancedFlowExecutor(FlowExecutor):
                 if node_data.get("type") == "result":
                     result_nodes[node_id] = result.get("output")
             
-            # Yield node completion event
-            yield {
+            # Return node completion event
+            return {
                 "type": "node_complete",
                 "node_id": node_id,
-                "node_title": node_data.get("title", "Unknown"),
-                "node_index": idx + 1,
-                "total_nodes": len(execution_order),
+                "node_title": node_data.get("data", {}).get("title", "Unknown"),
+                "node_index": node_index + 1,
+                "total_nodes": total_nodes,
                 "result": result,
                 "timestamp": time.time()
             }
             
-            # Check if we should halt on error
-            if halt_on_error and result["status"] == "error":
-                # Send error event
-                yield {
-                    "type": "error",
-                    "error": f"Node {node_id} failed: {result.get('error')}",
-                    "node_id": node_id,
-                    "timestamp": time.time()
-                }
-                break
-        
-        # Send completion event
-        total_time = round((time.time() - start_time) * 1000)
-        yield {
-            "type": "complete",
-            "execution_results": execution_results,
-            "result_nodes": result_nodes,
-            "execution_order": execution_order,
-            "total_execution_time_ms": total_time,
-            "timestamp": time.time()
-        }
+        except Exception as e:
+            # Return error event
+            error_result = {
+                "status": "error",
+                "error": str(e),
+                "execution_time_ms": 0,
+                "logs": ""
+            }
+            execution_results[node_id] = error_result
+            
+            return {
+                "type": "node_complete",
+                "node_id": node_id,
+                "node_title": node_data.get("data", {}).get("title", "Unknown"),
+                "node_index": node_index + 1,
+                "total_nodes": total_nodes,
+                "result": error_result,
+                "timestamp": time.time()
+            }
     
     def get_store_info(self, project_id: str) -> Dict:
         """Get information about the object store for debugging"""

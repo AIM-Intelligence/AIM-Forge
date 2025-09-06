@@ -23,7 +23,6 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
   const nodeRef = useRef<HTMLDivElement>(null);
   const { projectId } = useParams<{ projectId: string }>();
   const getNodeResult = useExecutionStore((state) => state.getNodeResult);
-  const setNodeResult = useExecutionStore((state) => state.setNodeResult);
   const runId = useExecutionStore((state) => state.runId);
   const executionResults = useExecutionStore((state) => state.executionResults);
 
@@ -81,13 +80,6 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
     }
   }, [executionResults, props.id, getNodeResult]);
 
-  // Handle text change
-  const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const newText = e.target.value;
-    setUserText(newText);
-    // Store the text as the node's result so it can be passed to next nodes
-    setNodeResult(props.id, newText);
-  };
 
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -257,12 +249,12 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
             </button>
           )}
 
-          {/* Editable text area - takes most of the space */}
+          {/* Read-only text area - takes most of the space */}
           <textarea
-            className="flex-1 p-3 bg-transparent text-sm text-green-400 font-mono resize-none outline-none nowheel"
+            className="flex-1 p-3 bg-transparent text-sm text-green-400 font-mono resize-none outline-none nowheel cursor-default"
             value={userText}
-            onChange={handleTextChange}
-            placeholder="Type here or run the flow to see results..."
+            readOnly
+            placeholder="Run the flow to see results..."
             onMouseDown={(e) => {
               e.stopPropagation();
             }}
