@@ -102,7 +102,7 @@ export function useProjectData(
                     dimensions: node.data.dimensions,
                     componentType: node.data.componentType,
                     viewCode: () => {
-                      onNodeClick(node.id, node.data.title || `Node ${node.id}`);
+                      onNodeClick(node.id, node.data.title || `Node ${node.id}`, node.data.file);
                     },
                   },
                 } as DefaultNodeType;
