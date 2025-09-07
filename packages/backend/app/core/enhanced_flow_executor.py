@@ -856,9 +856,10 @@ class EnhancedFlowExecutor(FlowExecutor):
         result_nodes = {}
         
         # Filter execution order to count only main processing components
-        # Exclude: start nodes, result nodes, and text input nodes
+        # Exclude: start nodes, result nodes, and text input nodes from progress count
         main_component_count = 0
         main_component_indices = {}  # Map node_id to its index in main components
+        completed_main_components = 0  # Track completed main components
         
         for node_id in execution_order:
             node = nodes.get(node_id, {})
@@ -866,7 +867,7 @@ class EnhancedFlowExecutor(FlowExecutor):
             node_title = node.get("data", {}).get("title", "")
             component_type = node.get("data", {}).get("componentType", "")
             
-            # Check if this is a main processing component
+            # Check if this is a main processing component (exclude result, start, text input)
             is_main_component = (
                 node_type not in ["start", "result", "textInput"] and
                 component_type != "TextInput" and
@@ -882,11 +883,38 @@ class EnhancedFlowExecutor(FlowExecutor):
         print(f"[EXECUTION] Total nodes: {len(execution_order)}, Main components: {main_component_count}")
         print(f"[EXECUTION] Main component indices: {main_component_indices}")
         
-        # Send initial event
+        # Classify Result nodes based on incoming edges
+        # Input Result nodes: no incoming edges from this pipeline (preserve values)
+        # Output Result nodes: have incoming edges from this pipeline (clear values)
+        input_result_nodes = []
+        output_result_nodes = []
+        
+        for node_id in reachable_nodes:
+            node = nodes.get(node_id, {})
+            if node.get("type") == "result":
+                # Check if this Result node has incoming edges from nodes in this pipeline
+                has_incoming = False
+                for edge in edges:
+                    if edge["target"] == node_id and edge["source"] in reachable_nodes:
+                        has_incoming = True
+                        break
+                
+                if has_incoming:
+                    output_result_nodes.append(node_id)
+                else:
+                    input_result_nodes.append(node_id)
+        
+        print(f"[EXECUTION] Input Result nodes (preserve): {input_result_nodes}")
+        print(f"[EXECUTION] Output Result nodes (clear): {output_result_nodes}")
+        
+        # Send initial event with classified nodes
         yield {
             "type": "start",
             "total_nodes": main_component_count,  # Use filtered count
             "execution_order": execution_order,
+            "affected_nodes": list(reachable_nodes),  # All nodes in this pipeline
+            "input_result_nodes": input_result_nodes,  # Result nodes to preserve
+            "output_result_nodes": output_result_nodes,  # Result nodes to clear
             "timestamp": time.time()
         }
         
@@ -904,7 +932,7 @@ class EnhancedFlowExecutor(FlowExecutor):
         # Track which nodes are currently executing
         executing_nodes = set()
         completed_nodes = set()
-        node_index = 0
+        completed_main_components = 0  # Track how many main components have completed
         
         # Process nodes in levels (nodes that can execute in parallel)
         while len(completed_nodes) < len(execution_order):
@@ -938,11 +966,11 @@ class EnhancedFlowExecutor(FlowExecutor):
                     project_id, node_id, node_data, nodes, edges, 
                     node_outputs, execution_results, result_nodes,
                     result_node_values, main_index, main_component_count,
+                    completed_main_components,
                     start_node_id, params, timeout_sec, halt_on_error
                 ))
                 tasks.append(task)
                 task_to_node[task] = node_id
-                node_index += 1
             
             # Wait for all tasks to complete and yield results as they finish
             pending_tasks = set(tasks)
@@ -960,6 +988,9 @@ class EnhancedFlowExecutor(FlowExecutor):
                     
                     if result:
                         yield result
+                        # Track completed main components for accurate progress
+                        if node_id in main_component_indices:
+                            completed_main_components += 1
                     
                     executing_nodes.remove(node_id)
                     completed_nodes.add(node_id)
@@ -990,6 +1021,7 @@ class EnhancedFlowExecutor(FlowExecutor):
         result_node_values: Optional[Dict],
         main_component_index: int,  # Index in main components (-1 if not a main component)
         total_main_components: int,  # Total count of main components
+        completed_main_components: int,  # Number of main components completed so far
         start_node_id: str,
         params: Optional[Dict] = None,
         timeout_sec: int = 30,
@@ -1093,8 +1125,22 @@ class EnhancedFlowExecutor(FlowExecutor):
                     result_nodes[node_id] = result.get("output")
             
             # Return node completion event
-            # Only send progress updates for main components
-            if main_component_index >= 0:
+            # Send updates for all nodes including Result nodes for real-time updates
+            # Only exclude Start and TextInput nodes from progress updates
+            if node_data.get("type") == "result":
+                # For Result nodes, send event but don't increment progress counter
+                # Use the current completed count (not incremented for Result nodes)
+                return {
+                    "type": "node_complete",
+                    "node_id": node_id,
+                    "node_title": node_data.get("data", {}).get("title", "Unknown"),
+                    "node_index": completed_main_components,  # Use current progress
+                    "total_nodes": total_main_components,
+                    "result": result,
+                    "timestamp": time.time()
+                }
+            elif main_component_index >= 0:
+                # For main components, use their actual index
                 return {
                     "type": "node_complete",
                     "node_id": node_id,
@@ -1105,7 +1151,7 @@ class EnhancedFlowExecutor(FlowExecutor):
                     "timestamp": time.time()
                 }
             else:
-                # For auxiliary nodes (start, result, text input), don't send progress update
+                # For auxiliary nodes (start, text input), don't send progress update
                 return None
             
         except Exception as e:

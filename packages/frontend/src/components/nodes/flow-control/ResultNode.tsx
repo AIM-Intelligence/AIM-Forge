@@ -1,10 +1,25 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import clsx from "clsx";
 import { useParams } from "react-router-dom";
 import { useExecutionStore } from "../../../stores/executionStore";
 import { useNodeValueStore } from "../../../stores/nodeValueStore";
 import { projectApi } from "../../../utils/api";
+
+// Define ExecutionResult interface
+interface ExecutionResult {
+  status: 'success' | 'error' | 'skipped';
+  output?: unknown;
+  error?: string;
+  execution_time_ms?: number;
+  logs?: string;
+  display_metadata?: {
+    display: unknown;
+    full_ref?: string;
+    is_truncated?: boolean;
+    raw_value?: unknown;
+  };
+}
 
 export type ResultNodeType = Node<{
   title: string;
@@ -22,115 +37,173 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
   const [isResizing, setIsResizing] = useState(false);
   const [userText, setUserText] = useState<string>("");
   const nodeRef = useRef<HTMLDivElement>(null);
+  const didInitCache = useRef(false);
   const { projectId } = useParams<{ projectId: string }>();
-  const getNodeResult = useExecutionStore((state) => state.getNodeResult);
-  const runId = useExecutionStore((state) => state.runId);
-  const executionResults = useExecutionStore((state) => state.executionResults);
-  const { setNodeValue, getNodeValue } = useNodeValueStore();
+  
+  // Storage keys
+  const storageKey = useMemo(
+    () => projectId ? `result_${projectId}_${props.id}` : null,
+    [projectId, props.id]
+  );
+  const dimensionsKey = useMemo(
+    () => projectId ? `result_dimensions_${projectId}_${props.id}` : null,
+    [projectId, props.id]
+  );
 
-  // Load saved dimensions and value from localStorage on mount
+  // ✅ Subscribe to only this node's execution result with shallow comparison
+  const nodeExecutionResult = useExecutionStore(
+    state => state.executionResults[props.id]
+  ) as ExecutionResult | undefined;
+  const executingNodes = useExecutionStore(state => state.executingNodes);
+  const isMyPipelineExecuting = executingNodes.has(props.id);
+  const runId = useExecutionStore(state => state.runId);
+  
+  console.log(`[ResultNode ${props.id}] Render - isMyPipelineExecuting:`, isMyPipelineExecuting, 'executingNodes:', Array.from(executingNodes), 'userText length:', userText.length, 'nodeExecutionResult:', nodeExecutionResult);
+  
+  // Node value store for persistence
+  const { setNodeValue, clearNodeValue } = useNodeValueStore();
+
+  // Safe preview formatter with length limit and circular reference handling
+  const formatPreview = useCallback((value: unknown): string => {
+    if (value === null || value === undefined) return "";
+    
+    try {
+      if (typeof value === "string") return value;
+      
+      // Handle circular references
+      const seen = new WeakSet();
+      const json = JSON.stringify(
+        value,
+        (_, v) => {
+          if (typeof v === "object" && v !== null) {
+            if (seen.has(v)) return "[Circular]";
+            seen.add(v);
+          }
+          return v;
+        },
+        2
+      );
+      
+      // Apply length limit
+      const MAX_LENGTH = 20000;
+      return json.length > MAX_LENGTH 
+        ? json.slice(0, MAX_LENGTH) + "\n...[truncated]" 
+        : json;
+    } catch (error) {
+      // Fallback to string conversion
+      return String(value);
+    }
+  }, []);
+
+  // ✅ Load dimensions on mount
   useEffect(() => {
-    if (projectId) {
-      const dimensionsKey = `result_dimensions_${projectId}_${props.id}`;
-      const savedDimensions = localStorage.getItem(dimensionsKey);
-      if (savedDimensions) {
+    if (!dimensionsKey) return;
+    
+    const savedDimensions = localStorage.getItem(dimensionsKey);
+    if (savedDimensions) {
+      try {
+        const parsed = JSON.parse(savedDimensions);
+        setDimensions(parsed);
+      } catch (e) {
+        console.error("Failed to parse saved dimensions:", e);
+      }
+    } else if (props.data?.dimensions) {
+      setDimensions(props.data.dimensions);
+      localStorage.setItem(dimensionsKey, JSON.stringify(props.data.dimensions));
+    }
+  }, [dimensionsKey, props.data?.dimensions]);
+
+  // ✅ Load cache ONLY ONCE on mount (if no execution result exists)
+  useEffect(() => {
+    if (didInitCache.current || !storageKey) return;
+    didInitCache.current = true;
+    
+    // Only load cache if there's no execution result yet
+    if (nodeExecutionResult == null) {
+      const cached = localStorage.getItem(storageKey);
+      console.log(`[ResultNode ${props.id}] Loading from localStorage:`, cached ? 'Found cached value' : 'No cache');
+      if (cached) {
         try {
-          const parsed = JSON.parse(savedDimensions);
-          setDimensions(parsed);
-        } catch (e) {
-          console.error("Failed to parse saved dimensions:", e);
+          const parsed = JSON.parse(cached);
+          const preview = formatPreview(parsed);
+          setUserText(preview);
+          console.log(`[ResultNode ${props.id}] Set initial text from cache`);
+        } catch {
+          // If parsing fails, use as-is
+          setUserText(cached);
+          console.log(`[ResultNode ${props.id}] Set initial text from cache (raw)`);
         }
-      } else if (props.data?.dimensions) {
-        // Use backend dimensions if no localStorage value
-        setDimensions(props.data.dimensions);
-        // Save to localStorage for consistency
-        localStorage.setItem(dimensionsKey, JSON.stringify(props.data.dimensions));
-      }
-      
-      // Load saved value from nodeValueStore if no execution result
-      const savedValue = getNodeValue(props.id);
-      if (savedValue !== undefined && savedValue !== null && !getNodeResult(props.id)) {
-        // Format saved value for display
-        let preview = "";
-        if (typeof savedValue === "object") {
-          preview = JSON.stringify(savedValue, null, 2);
-        } else {
-          preview = String(savedValue);
-        }
-        setUserText(preview);
       }
     }
-  }, [projectId, props.id, props.data?.dimensions, getNodeValue, getNodeResult]);
-
-  // Update text when execution results change
+  }, [storageKey, nodeExecutionResult, formatPreview]);
+  
+  // ✅ Clear display when this node's result is cleared (output nodes)
   useEffect(() => {
-    const result = getNodeResult(props.id);
-    if (result !== null && result !== undefined) {
-      // The actual value that will be passed to downstream nodes
-      let actualValue = result;
-      let displayValue = result;
-      
-      // Check if result has display_metadata (new format from backend)
-      const executionResult = executionResults[props.id];
-      if (executionResult?.display_metadata) {
-        // New format with display metadata
-        const metadata = executionResult.display_metadata;
-        displayValue = metadata.display;
-        actualValue = result; // The output is already the actual value
-        // Store metadata for download
-        (nodeRef.current as any)._fullDataRef = metadata.full_ref;
-        (nodeRef.current as any)._rawValue = metadata.raw_value || result;
-        (nodeRef.current as any)._isTruncated = metadata.is_truncated;
-      } else if (typeof result === "object" && result !== null && "display" in result) {
-        // Old format (fallback)
-        const oldFormatResult = result as any;
-        displayValue = oldFormatResult.display;
-        actualValue = oldFormatResult.raw_value || result;
-        (nodeRef.current as any)._fullDataRef = oldFormatResult.full_ref;
-        (nodeRef.current as any)._rawValue = oldFormatResult.raw_value;
-        (nodeRef.current as any)._isTruncated = oldFormatResult.is_truncated;
-      } else {
-        // Direct value
-        (nodeRef.current as any)._fullDataRef = null;
-        (nodeRef.current as any)._rawValue = result;
-        (nodeRef.current as any)._isTruncated = false;
-      }
+    console.log(`[ResultNode ${props.id}] Clear check - isMyPipelineExecuting:`, isMyPipelineExecuting, 'nodeExecutionResult:', nodeExecutionResult, 'current userText length:', userText.length);
+    
+    // If this node is executing and has no result (was cleared), clear the display
+    // This happens when StartNode clears output Result nodes but preserves input Result nodes
+    if (isMyPipelineExecuting && nodeExecutionResult === undefined && userText.length > 0) {
+      console.log(`[ResultNode ${props.id}] CLEARING display - output node in executing pipeline`);
+      setUserText("");
+    }
+  }, [isMyPipelineExecuting, nodeExecutionResult]);
 
-      // Format result for display
-      let preview = "";
-      if (typeof displayValue === "object" && displayValue !== null) {
-        preview = JSON.stringify(displayValue, null, 2);
-      } else {
-        preview = String(displayValue);
-      }
-      // Already truncated by backend if needed
-      setUserText(preview);
+  // ✅ Update when real-time execution result arrives
+  useEffect(() => {
+    console.log(`[ResultNode ${props.id}] Execution result changed:`, nodeExecutionResult);
+    if (!nodeExecutionResult) return;
+    
+    // Extract the actual value from execution result
+    let actualValue = nodeExecutionResult.output;
+    let displayValue = actualValue;
+    
+    // Check for display metadata (backend truncation)
+    if (nodeExecutionResult.display_metadata) {
+      const metadata = nodeExecutionResult.display_metadata;
+      displayValue = metadata.display;
+      actualValue = nodeExecutionResult.output;
       
-      // Store the actual value (not display metadata) in nodeValueStore for reuse
-      setNodeValue(props.id, actualValue);
-      
-      // Also save to localStorage for persistence
-      if (projectId) {
-        const storageKey = `result_${projectId}_${props.id}`;
+      // Store metadata for download functionality
+      (nodeRef.current as any)._fullDataRef = metadata.full_ref;
+      (nodeRef.current as any)._rawValue = metadata.raw_value || actualValue;
+      (nodeRef.current as any)._isTruncated = metadata.is_truncated;
+    } else {
+      // No metadata, use direct value
+      (nodeRef.current as any)._fullDataRef = null;
+      (nodeRef.current as any)._rawValue = actualValue;
+      (nodeRef.current as any)._isTruncated = false;
+    }
+    
+    // Format and display
+    const preview = formatPreview(displayValue);
+    setUserText(preview);
+    
+    // Update node value store for data flow
+    setNodeValue(props.id, actualValue);
+    
+    // Save to localStorage for next session
+    if (storageKey) {
+      try {
         localStorage.setItem(storageKey, JSON.stringify(actualValue));
+      } catch {
+        // Storage quota exceeded or other errors - ignore
       }
     }
-  }, [executionResults, props.id, getNodeResult, setNodeValue, projectId]);
+  }, [nodeExecutionResult, formatPreview, setNodeValue, props.id, storageKey]);
 
-
+  // Handle node deletion
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
     
-    // Clear localStorage dimensions, value and nodeValueStore when deleting
-    if (projectId) {
-      const dimensionsKey = `result_dimensions_${projectId}_${props.id}`;
-      const valueKey = `result_${projectId}_${props.id}`;
-      localStorage.removeItem(dimensionsKey);
-      localStorage.removeItem(valueKey);
-    }
+    // Clear localStorage
+    if (storageKey) localStorage.removeItem(storageKey);
+    if (dimensionsKey) localStorage.removeItem(dimensionsKey);
+    
     // Clear from nodeValueStore
-    useNodeValueStore.getState().clearNodeValue(props.id);
-    // 부모 컴포넌트에서 처리하도록 이벤트 전달
+    clearNodeValue(props.id);
+    
+    // Dispatch delete event
     const deleteEvent = new CustomEvent("deleteNode", {
       detail: { id: props.id },
       bubbles: true,
@@ -138,10 +211,10 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
     e.currentTarget.dispatchEvent(deleteEvent);
   };
 
+  // Handle result download
   const handleGetResult = async (e: React.MouseEvent) => {
     e.stopPropagation();
 
-    // Check if we have truncated data and need to fetch full data
     const isTruncated = (nodeRef.current as any)?._isTruncated;
     const fullDataRef = (nodeRef.current as any)?._fullDataRef;
     const rawValue = (nodeRef.current as any)?._rawValue;
@@ -149,30 +222,19 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
     let fullData = userText || "";
     
     // If truncated and has reference, fetch full data from backend
-    if (isTruncated && fullDataRef) {
+    if (isTruncated && fullDataRef && projectId) {
       try {
         const response = await fetch(`/api/project/${projectId}/node/${props.id}/full-result`);
         const result = await response.json();
         
         if (result.success) {
-          // Format the full data
-          if (typeof result.data === "object") {
-            fullData = JSON.stringify(result.data, null, 2);
-          } else {
-            fullData = String(result.data);
-          }
+          fullData = formatPreview(result.data);
         }
       } catch (error) {
         console.error("Failed to fetch full data:", error);
-        // Fall back to displayed text
       }
     } else if (rawValue !== undefined && rawValue !== null) {
-      // Use raw value if available
-      if (typeof rawValue === "object") {
-        fullData = JSON.stringify(rawValue, null, 2);
-      } else {
-        fullData = String(rawValue);
-      }
+      fullData = formatPreview(rawValue);
     }
 
     if (!fullData) {
@@ -205,7 +267,7 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
     URL.revokeObjectURL(url);
   };
 
-  // Sync data with backend
+  // Sync dimensions with backend
   const syncWithBackend = useCallback(async (data: Record<string, unknown>) => {
     if (!projectId) return;
     
@@ -220,6 +282,7 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
     }
   }, [projectId, props.id]);
 
+  // Handle resize
   const handleResize = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -246,12 +309,9 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
       document.removeEventListener('mouseup', handleMouseUp);
       document.body.style.cursor = '';
       
-      // Save final dimensions to localStorage
-      if (projectId) {
-        const dimensionsKey = `result_dimensions_${projectId}_${props.id}`;
+      // Save final dimensions
+      if (dimensionsKey) {
         localStorage.setItem(dimensionsKey, JSON.stringify({ width: finalWidth, height: finalHeight }));
-        
-        // Also sync dimensions with backend
         syncWithBackend({ dimensions: { width: finalWidth, height: finalHeight } });
       }
     };
@@ -280,7 +340,7 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
       >
         {/* Inner container with overflow control */}
         <div className="flex flex-col h-full overflow-hidden rounded-lg">
-          {/* 삭제 버튼 */}
+          {/* Delete button */}
           {hovering && (
             <button
               onClick={handleDelete}
@@ -290,12 +350,12 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
             </button>
           )}
 
-          {/* Read-only text area - takes most of the space */}
+          {/* Read-only text area */}
           <textarea
             className="flex-1 p-3 bg-transparent text-sm text-green-400 font-mono resize-none outline-none nowheel cursor-default"
             value={userText}
             readOnly
-            placeholder="Run the flow to see results..."
+            placeholder={isMyPipelineExecuting ? "Executing..." : "Run the flow to see results..."}
             onMouseDown={(e) => {
               e.stopPropagation();
             }}
@@ -304,7 +364,7 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
             }}
           />
 
-          {/* Download button - small and at the bottom */}
+          {/* Download button */}
           {userText && (
             <div className="border-t border-neutral-700 p-2">
               <button
