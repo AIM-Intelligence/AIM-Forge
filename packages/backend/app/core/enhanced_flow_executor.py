@@ -72,7 +72,7 @@ class EnhancedFlowExecutor(FlowExecutor):
                 elif 'display' in stored_value:
                     stored_value = stored_value['display']
             
-            print(f"[TEXTINPUT NODE {node_id}] Final stored value: {repr(stored_value)}, Type: {type(stored_value)}")
+            pass  # TextInput node value stored
             
             if stored_value is not None and stored_value != "":
                 # Return the stored value directly as a string (not wrapped in dict)
@@ -99,17 +99,14 @@ class EnhancedFlowExecutor(FlowExecutor):
             
             # If we have stored value but no input, use the stored value
             if stored_value is not None and input_data is None:
-                print(f"[RESULT NODE {node_id}] Using stored value: {str(stored_value)[:200]}")
                 input_data = stored_value
             elif input_data is not None:
                 # We have new input, this will update the stored value
-                print(f"[RESULT NODE {node_id}] Received input_data: {str(input_data)[:200]}")
+                pass
             else:
                 # No stored value and no input
-                print(f"[RESULT NODE {node_id}] No input or stored value")
                 input_data = ""
             
-            print(f"[RESULT NODE {node_id}] Input type: {type(input_data)}")
             
             # Prepare both display and full data
             display_output = input_data
@@ -193,7 +190,6 @@ class EnhancedFlowExecutor(FlowExecutor):
             # 2. If we have target handle information, restructure input for RunScript
             # Check if input_data already has handle names as keys (from multi-input scenario)
             # In that case, it's already properly structured and we don't need to restructure
-            print(f"[NODE {node_id}] Actual input before handle processing: {actual_input}")
             if target_handles and isinstance(actual_input, dict):
                 # Check if the keys are already handle names (not source IDs)
                 handle_values = set(target_handles.values())
@@ -880,8 +876,6 @@ class EnhancedFlowExecutor(FlowExecutor):
                 main_component_indices[node_id] = main_component_count
                 main_component_count += 1
         
-        print(f"[EXECUTION] Total nodes: {len(execution_order)}, Main components: {main_component_count}")
-        print(f"[EXECUTION] Main component indices: {main_component_indices}")
         
         # Classify Result nodes based on incoming edges
         # Input Result nodes: no incoming edges from this pipeline (preserve values)
@@ -904,8 +898,6 @@ class EnhancedFlowExecutor(FlowExecutor):
                 else:
                     input_result_nodes.append(node_id)
         
-        print(f"[EXECUTION] Input Result nodes (preserve): {input_result_nodes}")
-        print(f"[EXECUTION] Output Result nodes (clear): {output_result_nodes}")
         
         # Send initial event with classified nodes
         yield {
@@ -925,9 +917,6 @@ class EnhancedFlowExecutor(FlowExecutor):
                 dependencies[edge["target"]].add(edge["source"])
         
         # Execute nodes with dependency-aware parallelism
-        print(f"[EXECUTION] Order: {execution_order}")
-        print(f"[EXECUTION] Result node values: {result_node_values}")
-        print(f"[EXECUTION] Dependencies: {dict(dependencies)}")
         
         # Track which nodes are currently executing
         executing_nodes = set()
@@ -956,7 +945,6 @@ class EnhancedFlowExecutor(FlowExecutor):
             for node_id in ready_nodes:
                 executing_nodes.add(node_id)
                 node_data = nodes[node_id]
-                print(f"[EXECUTION] Starting node {node_id}, type: {node_data.get('type')}")
                 
                 # Create async task for this node
                 # Get the main component index for this node (or -1 if not a main component)
@@ -994,7 +982,6 @@ class EnhancedFlowExecutor(FlowExecutor):
                     
                     executing_nodes.remove(node_id)
                     completed_nodes.add(node_id)
-                    print(f"[EXECUTION] Completed node {node_id}")
         
         # Send complete event
         yield {
@@ -1054,20 +1041,17 @@ class EnhancedFlowExecutor(FlowExecutor):
                     # Check if source_output is a reference and unwrap it first
                     source_output_unwrapped = source_output
                     if isinstance(source_output, dict) and source_output.get("type") == "reference":
-                        print(f"[CHECK] Source output is reference, unwrapping...")
                         source_output_unwrapped = self._unwrap_input(project_id, source_output)
                     
                     # Extract value based on sourceHandle
                     value = source_output_unwrapped
                     if isinstance(source_output_unwrapped, dict) and edge_info["sourceHandle"]:
-                        print(f"[CHECK] node={node_id}, sourceHandle={edge_info['sourceHandle']}, keys={list(source_output_unwrapped.keys())[:10]}")
                         if edge_info["sourceHandle"] in source_output_unwrapped:
                             value = source_output_unwrapped[edge_info["sourceHandle"]]
-                            print(f"[CHECK] Successfully extracted '{edge_info['sourceHandle']}': {str(value)[:100]}")
                         else:
-                            print(f"[CHECK] sourceHandle '{edge_info['sourceHandle']}' not found in output")
+                            pass  # sourceHandle not found in output
                     else:
-                        print(f"[CHECK] No extraction: type={type(source_output_unwrapped)}, sourceHandle={edge_info.get('sourceHandle')}")
+                        pass  # No sourceHandle specified
                     
                     # If targetHandle is specified, wrap in dict
                     if edge_info["targetHandle"]:

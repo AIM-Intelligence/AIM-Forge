@@ -58,7 +58,6 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
   const isMyPipelineExecuting = executingNodes.has(props.id);
   const runId = useExecutionStore(state => state.runId);
   
-  console.log(`[ResultNode ${props.id}] Render - isMyPipelineExecuting:`, isMyPipelineExecuting, 'executingNodes:', Array.from(executingNodes), 'userText length:', userText.length, 'nodeExecutionResult:', nodeExecutionResult);
   
   // Node value store for persistence
   const { setNodeValue, clearNodeValue } = useNodeValueStore();
@@ -121,17 +120,14 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
     // Only load cache if there's no execution result yet
     if (nodeExecutionResult == null) {
       const cached = localStorage.getItem(storageKey);
-      console.log(`[ResultNode ${props.id}] Loading from localStorage:`, cached ? 'Found cached value' : 'No cache');
       if (cached) {
         try {
           const parsed = JSON.parse(cached);
           const preview = formatPreview(parsed);
           setUserText(preview);
-          console.log(`[ResultNode ${props.id}] Set initial text from cache`);
         } catch {
           // If parsing fails, use as-is
           setUserText(cached);
-          console.log(`[ResultNode ${props.id}] Set initial text from cache (raw)`);
         }
       }
     }
@@ -139,19 +135,15 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
   
   // ✅ Clear display when this node's result is cleared (output nodes)
   useEffect(() => {
-    console.log(`[ResultNode ${props.id}] Clear check - isMyPipelineExecuting:`, isMyPipelineExecuting, 'nodeExecutionResult:', nodeExecutionResult, 'current userText length:', userText.length);
-    
     // If this node is executing and has no result (was cleared), clear the display
     // This happens when StartNode clears output Result nodes but preserves input Result nodes
     if (isMyPipelineExecuting && nodeExecutionResult === undefined && userText.length > 0) {
-      console.log(`[ResultNode ${props.id}] CLEARING display - output node in executing pipeline`);
       setUserText("");
     }
   }, [isMyPipelineExecuting, nodeExecutionResult]);
 
   // ✅ Update when real-time execution result arrives
   useEffect(() => {
-    console.log(`[ResultNode ${props.id}] Execution result changed:`, nodeExecutionResult);
     if (!nodeExecutionResult) return;
     
     // Extract the actual value from execution result

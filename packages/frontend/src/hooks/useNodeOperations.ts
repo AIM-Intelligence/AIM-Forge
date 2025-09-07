@@ -353,9 +353,7 @@ export function useNodeOperations({
                   node_id: change.id,
                   position: change.position,
                 });
-                console.log(`Position updated for node ${change.id}`);
               } catch (error) {
-                console.error(`Failed to update position for node ${change.id}:`, error);
               }
             }
           });

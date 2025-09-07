@@ -158,24 +158,16 @@ export const useExecutionStore = create<ExecutionState>((set, get) => ({
 
   // Pipeline-specific execution management
   setExecutingNodes: (nodeIds) => {
-    console.log('[ExecutionStore] Setting executing nodes:', nodeIds);
     set({ 
       executingNodes: new Set(nodeIds) 
     });
   },
 
   clearNodeResults: (nodeIds) => set((state) => {
-    console.log('[ExecutionStore] Clearing results for nodes:', nodeIds);
     const newExecutionResults = { ...state.executionResults };
     const newResultNodes = { ...state.resultNodes };
     
     nodeIds.forEach(nodeId => {
-      if (newExecutionResults[nodeId]) {
-        console.log(`[ExecutionStore] Deleting execution result for ${nodeId}`);
-      }
-      if (newResultNodes[nodeId]) {
-        console.log(`[ExecutionStore] Deleting result node value for ${nodeId}`);
-      }
       delete newExecutionResults[nodeId];
       delete newResultNodes[nodeId];
     });

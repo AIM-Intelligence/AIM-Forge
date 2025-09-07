@@ -98,10 +98,6 @@ export default function StartNode(props: NodeProps<StartNodeType>) {
               const outputResultNodes = (event as any).output_result_nodes || [];
               const inputResultNodes = (event as any).input_result_nodes || [];
               
-              console.log('[StartNode] Start event received');
-              console.log('[StartNode] Affected nodes:', affectedNodes);
-              console.log('[StartNode] Input Result nodes (preserve):', inputResultNodes);
-              console.log('[StartNode] Output Result nodes (clear):', outputResultNodes);
               
               if (affectedNodes) {
                 store.setExecutingNodes(affectedNodes);
@@ -113,16 +109,12 @@ export default function StartNode(props: NodeProps<StartNodeType>) {
                 );
                 
                 store.clearNodeResults(nodesToClear);
-                console.log('[StartNode] Set executing nodes and cleared results for:', nodesToClear);
-                console.log('[StartNode] Preserved input Result nodes:', inputResultNodes);
               }
               
               store.setExecutionProgress(0, event.total_nodes || 0);
               // Don't clear all results, only affected nodes are cleared above
               // Get the current state AFTER clearing
               const currentState = useExecutionStore.getState();
-              console.log('[StartNode] Current executionResults after clear:', Object.keys(currentState.executionResults));
-              console.log('[StartNode] Current resultNodes after clear:', Object.keys(currentState.resultNodes));
               
               store.setExecutionResults({
                 execution_results: currentState.executionResults,  // Keep existing results after clear
