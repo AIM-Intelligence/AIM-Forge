@@ -40,11 +40,7 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
   const didInitCache = useRef(false);
   const { projectId } = useParams<{ projectId: string }>();
   
-  // Storage keys
-  const storageKey = useMemo(
-    () => projectId ? `result_${projectId}_${props.id}` : null,
-    [projectId, props.id]
-  );
+  // Storage key for dimensions only
   const dimensionsKey = useMemo(
     () => projectId ? `result_dimensions_${projectId}_${props.id}` : null,
     [projectId, props.id]
@@ -112,26 +108,14 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
     }
   }, [dimensionsKey, props.data?.dimensions]);
 
-  // ✅ Load cache ONLY ONCE on mount (if no execution result exists)
+  // ✅ Initialize text as empty on mount
   useEffect(() => {
-    if (didInitCache.current || !storageKey) return;
+    if (didInitCache.current) return;
     didInitCache.current = true;
     
-    // Only load cache if there's no execution result yet
-    if (nodeExecutionResult == null) {
-      const cached = localStorage.getItem(storageKey);
-      if (cached) {
-        try {
-          const parsed = JSON.parse(cached);
-          const preview = formatPreview(parsed);
-          setUserText(preview);
-        } catch {
-          // If parsing fails, use as-is
-          setUserText(cached);
-        }
-      }
-    }
-  }, [storageKey, nodeExecutionResult, formatPreview]);
+    // Start with empty text - only execution results will populate it
+    setUserText("");
+  }, []);
   
   // ✅ Clear display when this node's result is cleared (output nodes)
   useEffect(() => {
@@ -173,23 +157,13 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
     
     // Update node value store for data flow
     setNodeValue(props.id, actualValue);
-    
-    // Save to localStorage for next session
-    if (storageKey) {
-      try {
-        localStorage.setItem(storageKey, JSON.stringify(actualValue));
-      } catch {
-        // Storage quota exceeded or other errors - ignore
-      }
-    }
-  }, [nodeExecutionResult, formatPreview, setNodeValue, props.id, storageKey]);
+  }, [nodeExecutionResult, formatPreview, setNodeValue, props.id]);
 
   // Handle node deletion
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
     
-    // Clear localStorage
-    if (storageKey) localStorage.removeItem(storageKey);
+    // Clear localStorage for dimensions
     if (dimensionsKey) localStorage.removeItem(dimensionsKey);
     
     // Clear from nodeValueStore
@@ -211,22 +185,32 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
     const fullDataRef = (nodeRef.current as any)?._fullDataRef;
     const rawValue = (nodeRef.current as any)?._rawValue;
     
-    let fullData = userText || "";
+    let fullData: any = null;
     
     // If truncated and has reference, fetch full data from backend
     if (isTruncated && fullDataRef && projectId) {
       try {
-        const response = await fetch(`/api/project/${projectId}/node/${props.id}/full-result`);
+        const apiUrl = window.location.hostname === 'localhost' 
+          ? 'http://localhost:8000' 
+          : `http://${window.location.hostname}:8000`;
+        const response = await fetch(`${apiUrl}/api/project/${projectId}/node/${props.id}/full-result`);
         const result = await response.json();
         
         if (result.success) {
-          fullData = formatPreview(result.data);
+          // Use raw data without any formatting to preserve full content
+          fullData = result.data;
         }
       } catch (error) {
         console.error("Failed to fetch full data:", error);
       }
     } else if (rawValue !== undefined && rawValue !== null) {
-      fullData = formatPreview(rawValue);
+      // Use raw value directly without formatting
+      fullData = rawValue;
+    }
+
+    // If still no data, try using displayed text as fallback
+    if (!fullData && userText) {
+      fullData = userText;
     }
 
     if (!fullData) {

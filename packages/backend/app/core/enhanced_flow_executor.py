@@ -97,10 +97,9 @@ class EnhancedFlowExecutor(FlowExecutor):
             # Check if there's a stored value for this result node
             stored_value = result_node_values.get(node_id)
             
-            # If we have stored value but no input, use the stored value
-            if stored_value is not None and input_data is None:
-                input_data = stored_value
-            elif input_data is not None:
+            # Don't reuse stored value - always use current input for consistency
+            # This ensures errors are properly reflected and not masked by previous success
+            if input_data is not None:
                 # We have new input, this will update the stored value
                 # If input is a dict with single key like {"input_18": value}, unwrap it
                 if isinstance(input_data, dict) and len(input_data) == 1:
