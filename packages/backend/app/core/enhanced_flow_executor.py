@@ -102,11 +102,17 @@ class EnhancedFlowExecutor(FlowExecutor):
                 input_data = stored_value
             elif input_data is not None:
                 # We have new input, this will update the stored value
-                pass
+                # If input is a dict with single key like {"input_18": value}, unwrap it
+                if isinstance(input_data, dict) and len(input_data) == 1:
+                    key = list(input_data.keys())[0]
+                    if key.startswith("input_"):
+                        input_data = input_data[key]
             else:
                 # No stored value and no input
                 input_data = ""
             
+            # Wrap non-JSON serializable objects as references
+            input_data = self._wrap_output(project_id, node_id, input_data)
             
             # Prepare both display and full data
             display_output = input_data
@@ -156,25 +162,21 @@ class EnhancedFlowExecutor(FlowExecutor):
             
             # Pass through the actual input data as output
             # so it can be used by downstream nodes
+            # Keep it as reference if it was wrapped
             actual_output = input_data
-            
-            # If input_data was a reference, unwrap it for output
-            if isinstance(input_data, dict) and input_data.get("type") == "reference":
-                actual_output = self._unwrap_input(project_id, input_data)
             
             # Create display metadata for frontend
             display_metadata = {
                 "display": display_output,
                 "full_ref": full_data_ref,
                 "is_truncated": isinstance(display_output, str) and display_output.endswith("..."),
-                "raw_value": actual_output
             }
             
             # Store display metadata in a special key that frontend can recognize
             # but pass the actual value as the main output
             return {
                 "status": "success",
-                "output": actual_output,  # Pass through the actual value
+                "output": actual_output,  # Pass through the reference (not unwrapped)
                 "display_metadata": display_metadata,  # Metadata for UI display
                 "execution_time_ms": 0,
                 "logs": "Result node - passing through data",
@@ -695,10 +697,16 @@ class EnhancedFlowExecutor(FlowExecutor):
                 ]
                 
                 if incoming_edges:
-                    if len(incoming_edges) == 1:
-                        # Single input
-                        edge_info = incoming_edges[0]
+                    # Always use dict format for consistency between single and multiple inputs
+                    input_data = {}
+                    
+                    for edge_info in incoming_edges:
                         source = edge_info["source"]
+                        
+                        # Skip if source hasn't been executed yet
+                        if source not in node_outputs:
+                            continue
+                            
                         source_output = node_outputs[source]
                         
                         # Check if source_output is a reference and unwrap it first
@@ -713,39 +721,20 @@ class EnhancedFlowExecutor(FlowExecutor):
                             if edge_info["sourceHandle"] in source_output_unwrapped:
                                 value = source_output_unwrapped[edge_info["sourceHandle"]]
                         
-                        # If targetHandle is specified, wrap in dict with handle as key
+                        # Use targetHandle as key if specified
                         if edge_info["targetHandle"]:
-                            input_data = {edge_info["targetHandle"]: value}
+                            input_data[edge_info["targetHandle"]] = value
                             target_handles[source] = edge_info["targetHandle"]
                         else:
-                            input_data = value
-                    else:
-                        # Multiple inputs - create dict with targetHandle as keys
-                        input_data = {}
-                        for edge_info in incoming_edges:
-                            source = edge_info["source"]
-                            source_output = node_outputs.get(source)
-                            
-                            # Skip if source hasn't been executed yet
-                            if source not in node_outputs:
-                                continue
-                            
-                            # Get the actual value to use
-                            value = source_output
-                            
-                            # Extract specific output if sourceHandle is specified
-                            if isinstance(source_output, dict) and edge_info["sourceHandle"]:
-                                if edge_info["sourceHandle"] in source_output:
-                                    value = source_output[edge_info["sourceHandle"]]
+                            # For Result nodes without targetHandle, pass value directly
+                            # For other nodes, use a generic key
+                            target_node = nodes.get(node_id, {})
+                            if target_node.get("type") == "result":
+                                # Result node gets unwrapped value
+                                if not input_data:
+                                    input_data = value
                                 else:
-                                    value = source_output
-                            else:
-                                value = source_output
-                            
-                            # Use targetHandle as key if specified
-                            if edge_info["targetHandle"]:
-                                input_data[edge_info["targetHandle"]] = value
-                                target_handles[source] = edge_info["targetHandle"]
+                                    input_data[f"input_{source}"] = value
                             else:
                                 input_data[f"input_{source}"] = value
                 elif node_id == start_node_id and params:
@@ -1032,10 +1021,16 @@ class EnhancedFlowExecutor(FlowExecutor):
             ]
             
             if incoming_edges:
-                if len(incoming_edges) == 1:
-                    # Single input
-                    edge_info = incoming_edges[0]
+                # Always use dict format for consistency between single and multiple inputs
+                input_data = {}
+                
+                for edge_info in incoming_edges:
                     source = edge_info["source"]
+                    
+                    # Skip if source hasn't been executed yet
+                    if source not in node_outputs:
+                        continue
+                        
                     source_output = node_outputs[source]
                     
                     # Check if source_output is a reference and unwrap it first
@@ -1046,39 +1041,23 @@ class EnhancedFlowExecutor(FlowExecutor):
                     # Extract value based on sourceHandle
                     value = source_output_unwrapped
                     if isinstance(source_output_unwrapped, dict) and edge_info["sourceHandle"]:
+                        # Extract specific output from dict
                         if edge_info["sourceHandle"] in source_output_unwrapped:
                             value = source_output_unwrapped[edge_info["sourceHandle"]]
-                        else:
-                            pass  # sourceHandle not found in output
-                    else:
-                        pass  # No sourceHandle specified
                     
-                    # If targetHandle is specified, wrap in dict
+                    # Use targetHandle as key if specified
                     if edge_info["targetHandle"]:
-                        input_data = {edge_info["targetHandle"]: value}
+                        input_data[edge_info["targetHandle"]] = value
                         target_handles[source] = edge_info["targetHandle"]
                     else:
-                        input_data = value
-                else:
-                    # Multiple inputs
-                    input_data = {}
-                    for edge_info in incoming_edges:
-                        source = edge_info["source"]
-                        source_output = node_outputs.get(source)
-                        
-                        if source_output is None:
-                            continue
-                        
-                        # Extract specific output if sourceHandle specified
-                        value = source_output
-                        if isinstance(source_output, dict) and edge_info["sourceHandle"]:
-                            if edge_info["sourceHandle"] in source_output:
-                                value = source_output[edge_info["sourceHandle"]]
-                        
-                        # Use targetHandle as key if specified
-                        if edge_info["targetHandle"]:
-                            input_data[edge_info["targetHandle"]] = value
-                            target_handles[source] = edge_info["targetHandle"]
+                        # For Result nodes without targetHandle, pass value directly
+                        # For other nodes, use a generic key
+                        if node_data.get("type") == "result":
+                            # Result node gets unwrapped value
+                            if not input_data:
+                                input_data = value
+                            else:
+                                input_data[f"input_{source}"] = value
                         else:
                             input_data[f"input_{source}"] = value
             elif node_id == start_node_id and params:
