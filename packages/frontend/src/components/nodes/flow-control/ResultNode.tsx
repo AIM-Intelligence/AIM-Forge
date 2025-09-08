@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
+import { Handle, Position, type NodeProps, type Node, useReactFlow } from "@xyflow/react";
 import clsx from "clsx";
 import { useParams } from "react-router-dom";
 import { useExecutionStore } from "../../../stores/executionStore";
@@ -39,6 +39,7 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
   const nodeRef = useRef<HTMLDivElement>(null);
   const didInitCache = useRef(false);
   const { projectId } = useParams<{ projectId: string }>();
+  const { getZoom } = useReactFlow();
   
   // Storage key for dimensions only
   const dimensionsKey = useMemo(
@@ -271,13 +272,18 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
     const startY = e.clientY;
     const startWidth = dimensions.width;
     const startHeight = dimensions.height;
+    const zoom = getZoom();
 
     let finalWidth = startWidth;
     let finalHeight = startHeight;
 
     const handleMouseMove = (e: MouseEvent) => {
-      finalWidth = Math.min(900, Math.max(50, startWidth + e.clientX - startX));
-      finalHeight = Math.min(600, Math.max(50, startHeight + e.clientY - startY));
+      // Account for zoom level in delta calculation
+      const deltaX = (e.clientX - startX) / zoom;
+      const deltaY = (e.clientY - startY) / zoom;
+      
+      finalWidth = Math.min(900, Math.max(50, startWidth + deltaX));
+      finalHeight = Math.min(600, Math.max(50, startHeight + deltaY));
       
       setDimensions({ width: finalWidth, height: finalHeight });
     };
