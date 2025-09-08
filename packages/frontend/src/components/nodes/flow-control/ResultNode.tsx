@@ -260,6 +260,9 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
 
   // Handle resize
   const handleResize = (e: React.MouseEvent) => {
+    // Only handle left click for resize
+    if (e.button !== 0) return;
+    
     e.preventDefault();
     e.stopPropagation();
     setIsResizing(true);
@@ -328,15 +331,21 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
 
           {/* Read-only text area */}
           <textarea
-            className="flex-1 p-3 bg-transparent text-sm text-green-400 font-mono resize-none outline-none nowheel cursor-default"
+            className="flex-1 p-3 bg-transparent text-sm text-green-400 font-mono resize-none outline-none nopan cursor-default"
             value={userText}
             readOnly
             placeholder={isMyPipelineExecuting ? "Executing..." : "Run the flow to see results..."}
             onMouseDown={(e) => {
-              e.stopPropagation();
+              if (e.button === 0) {  // Only block left click (0)
+                e.stopPropagation();
+              }
             }}
             onWheel={(e) => {
-              e.stopPropagation();
+              // Only stop propagation if textarea has scroll
+              const hasScroll = e.currentTarget.scrollHeight > e.currentTarget.clientHeight;
+              if (hasScroll && e.currentTarget === e.target) {
+                e.stopPropagation();
+              }
             }}
           />
 
@@ -356,19 +365,21 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
         {/* Resize handle */}
         <div
           onMouseDown={handleResize}
-          onPointerDown={(e) => e.stopPropagation()}
-          onMouseEnter={(e) => {
-            e.stopPropagation();
+          onPointerDown={(e) => {
+            // Only block left click for resize
+            if (e.button === 0) {
+              e.stopPropagation();
+            }
+          }}
+          onMouseEnter={() => {
             document.body.style.cursor = 'nwse-resize';
           }}
-          onMouseLeave={(e) => {
-            e.stopPropagation();
+          onMouseLeave={() => {
             if (!isResizing) {
               document.body.style.cursor = '';
             }
           }}
           className="nodrag absolute bottom-0 right-0 w-4 h-4 cursor-nwse-resize group z-20"
-          style={{ pointerEvents: 'auto' }}
         >
           <div className="absolute bottom-0 right-0 w-full h-full pointer-events-none">
             {/* Three dots pattern for better visibility */}

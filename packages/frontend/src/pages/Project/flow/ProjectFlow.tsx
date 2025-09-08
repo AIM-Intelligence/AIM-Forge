@@ -147,6 +147,17 @@ function ProjectFlowInner({
         style={{ backgroundColor: "transparent" }}
         className="react-flow-transparent"
         deleteKeyCode={null} // Disable delete key
+        // Panning configuration
+        panOnDrag={[1, 2]} // Middle mouse button (1) and right mouse button (2) for panning
+        panOnScroll={true} // Enable panning with scroll (trackpad two-finger swipe)
+        panOnScrollMode="free" // Allow panning in any direction
+        panOnScrollSpeed={1.0} // Normal panning speed
+        // Zoom configuration
+        zoomOnScroll={false} // Disable zoom on scroll (use pinch or Ctrl+scroll instead)
+        zoomOnPinch={true} // Enable pinch-to-zoom for trackpad
+        zoomOnDoubleClick={false} // Disable double-click zoom
+        // Selection configuration
+        selectionOnDrag={false} // Disable selection by dragging
       >
         <Background
           variant={BackgroundVariant.Cross}
