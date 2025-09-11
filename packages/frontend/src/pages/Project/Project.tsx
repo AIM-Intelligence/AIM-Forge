@@ -18,15 +18,18 @@ export default function Project() {
   const { projectId } = useParams<{ projectId: string }>();
   const toastMessage = useExecutionStore((state) => state.toastMessage);
   const setToastMessage = useExecutionStore((state) => state.setToastMessage);
+  const clearResults = useExecutionStore((state) => state.clearResults);
   const loadFromLocalStorage = useNodeValueStore((state) => state.loadFromLocalStorage);
   const reactFlowInstanceRef = useRef<any>(null);
 
   // Load node values from localStorage when project loads
   useEffect(() => {
     if (projectId) {
+      // Clear execution results when switching projects to prevent cross-project contamination
+      clearResults();
       loadFromLocalStorage(projectId);
     }
-  }, [projectId, loadFromLocalStorage]);
+  }, [projectId, loadFromLocalStorage, clearResults]);
 
   // UI State
   const [isIdeModalOpen, setIsIdeModalOpen] = useState(false);

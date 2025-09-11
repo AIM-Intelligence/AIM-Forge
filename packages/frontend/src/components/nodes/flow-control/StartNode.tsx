@@ -39,6 +39,7 @@ export default function StartNode(props: NodeProps<StartNodeType>) {
   const { projectId } = useParams<{ projectId: string }>();
   const setExecuting = useExecutionStore((state) => state.setExecuting);
   const setToastMessage = useExecutionStore((state) => state.setToastMessage);
+  const setRunId = useExecutionStore((state) => state.setRunId);
   const resultNodes = useExecutionStore((state) => state.resultNodes);
   const getAllNodeValues = useNodeValueStore((state) => state.getAllNodeValues);
 
@@ -55,6 +56,10 @@ export default function StartNode(props: NodeProps<StartNodeType>) {
       });
       return;
     }
+
+    // Generate new run ID for this execution
+    const newRunId = `run-${Date.now()}`;
+    setRunId(newRunId);
 
     setIsRunning(true);
     setExecuting(true);
@@ -88,13 +93,35 @@ export default function StartNode(props: NodeProps<StartNodeType>) {
           
           switch (event.type) {
             case 'start':
+              // Set nodes in this pipeline as executing
+              const affectedNodes = (event as any).affected_nodes;
+              const outputResultNodes = (event as any).output_result_nodes || [];
+              const inputResultNodes = (event as any).input_result_nodes || [];
+              
+              
+              if (affectedNodes) {
+                store.setExecutingNodes(affectedNodes);
+                
+                // Only clear output Result nodes and non-Result nodes
+                // Preserve input Result nodes that are being used as inputs
+                const nodesToClear = affectedNodes.filter((nodeId: string) => 
+                  !inputResultNodes.includes(nodeId)
+                );
+                
+                store.clearNodeResults(nodesToClear);
+              }
+              
               store.setExecutionProgress(0, event.total_nodes || 0);
+              // Don't clear all results, only affected nodes are cleared above
+              // Get the current state AFTER clearing
+              const currentState = useExecutionStore.getState();
+              
               store.setExecutionResults({
-                execution_results: {},
-                result_nodes: {},
+                execution_results: currentState.executionResults,  // Keep existing results after clear
+                result_nodes: currentState.resultNodes,  // Keep existing results after clear
                 execution_order: event.execution_order || [],
                 total_execution_time_ms: 0,
-                run_id: `run-${Date.now()}`,
+                run_id: newRunId,
               });
               setModalState({
                 isOpen: true,
@@ -120,13 +147,16 @@ export default function StartNode(props: NodeProps<StartNodeType>) {
               break;
               
             case 'complete':
+              // Clear executing nodes when complete
+              store.setExecutingNodes([]);
+              
               if (event.execution_results && event.result_nodes) {
                 store.setExecutionResults({
                   execution_results: event.execution_results as Record<string, ExecutionResult>,
                   result_nodes: event.result_nodes as Record<string, unknown>,
                   execution_order: event.execution_order || [],
                   total_execution_time_ms: event.total_execution_time_ms || 0,
-                  run_id: `run-${Date.now()}`,
+                  run_id: newRunId,
                 });
               }
               

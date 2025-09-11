@@ -23,6 +23,7 @@ interface ExecutionState {
   runId: string | null;
   toastMessage: string | null;
   currentExecutingNode: string | null;
+  executingNodes: Set<string>;  // Nodes in currently executing pipeline
   executionProgress: {
     current: number;
     total: number;
@@ -44,6 +45,13 @@ interface ExecutionState {
   getNodeResult: (nodeId: string) => unknown;
   setNodeResult: (nodeId: string, value: unknown) => void;
   setToastMessage: (message: string | null) => void;
+  // New helpers for individual node subscription
+  getNodeExecutionResult: (nodeId: string) => ExecutionResult | undefined;
+  setRunId: (runId: string) => void;
+  // Pipeline-specific execution management
+  setExecutingNodes: (nodeIds: string[]) => void;
+  clearNodeResults: (nodeIds: string[]) => void;
+  isNodeExecuting: (nodeId: string) => boolean;
 }
 
 export const useExecutionStore = create<ExecutionState>((set, get) => ({
@@ -55,6 +63,7 @@ export const useExecutionStore = create<ExecutionState>((set, get) => ({
   runId: null,
   toastMessage: null,
   currentExecutingNode: null,
+  executingNodes: new Set<string>(),
   executionProgress: {
     current: 0,
     total: 0,
@@ -139,4 +148,37 @@ export const useExecutionStore = create<ExecutionState>((set, get) => ({
   })),
 
   setToastMessage: (message) => set({ toastMessage: message }),
+
+  // New helpers for individual node subscription
+  getNodeExecutionResult: (nodeId) => {
+    return get().executionResults[nodeId];
+  },
+
+  setRunId: (runId) => set({ runId }),
+
+  // Pipeline-specific execution management
+  setExecutingNodes: (nodeIds) => {
+    set({ 
+      executingNodes: new Set(nodeIds) 
+    });
+  },
+
+  clearNodeResults: (nodeIds) => set((state) => {
+    const newExecutionResults = { ...state.executionResults };
+    const newResultNodes = { ...state.resultNodes };
+    
+    nodeIds.forEach(nodeId => {
+      delete newExecutionResults[nodeId];
+      delete newResultNodes[nodeId];
+    });
+    
+    return {
+      executionResults: newExecutionResults,
+      resultNodes: newResultNodes,
+    };
+  }),
+
+  isNodeExecuting: (nodeId) => {
+    return get().executingNodes.has(nodeId);
+  },
 }));

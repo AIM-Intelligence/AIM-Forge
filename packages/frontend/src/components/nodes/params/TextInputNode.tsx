@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
+import { Handle, Position, type NodeProps, type Node, useReactFlow } from "@xyflow/react";
 import clsx from "clsx";
 import { useParams } from "react-router-dom";
 import { useExecutionStore } from "../../../stores/executionStore";
@@ -28,6 +28,7 @@ export default function TextInputNode(props: NodeProps<TextInputNodeType>) {
   const setNodeResult = useExecutionStore((state) => state.setNodeResult);
   const { setNodeValue, getNodeValue } = useNodeValueStore();
   const [saveTimeout, setSaveTimeout] = useState<NodeJS.Timeout | null>(null);
+  const { getZoom } = useReactFlow();
 
   // Load saved dimensions from localStorage on mount
   useEffect(() => {
@@ -137,6 +138,9 @@ export default function TextInputNode(props: NodeProps<TextInputNodeType>) {
   };
 
   const handleResize = (e: React.MouseEvent) => {
+    // Only handle left click for resize
+    if (e.button !== 0) return;
+    
     e.preventDefault();
     e.stopPropagation();
     setIsResizing(true);
@@ -145,13 +149,18 @@ export default function TextInputNode(props: NodeProps<TextInputNodeType>) {
     const startY = e.clientY;
     const startWidth = dimensions.width;
     const startHeight = dimensions.height;
+    const zoom = getZoom();
 
     let finalWidth = startWidth;
     let finalHeight = startHeight;
 
     const handleMouseMove = (e: MouseEvent) => {
-      finalWidth = Math.min(900, Math.max(50, startWidth + e.clientX - startX));
-      finalHeight = Math.min(600, Math.max(50, startHeight + e.clientY - startY));
+      // Account for zoom level in delta calculation
+      const deltaX = (e.clientX - startX) / zoom;
+      const deltaY = (e.clientY - startY) / zoom;
+      
+      finalWidth = Math.min(900, Math.max(50, startWidth + deltaX));
+      finalHeight = Math.min(600, Math.max(50, startHeight + deltaY));
       
       setDimensions({ width: finalWidth, height: finalHeight });
     };
@@ -208,15 +217,21 @@ export default function TextInputNode(props: NodeProps<TextInputNodeType>) {
 
           {/* Editable text area - takes full space */}
           <textarea
-            className="flex-1 p-3 bg-transparent text-sm text-blue-300 font-mono resize-none outline-none nowheel"
+            className="flex-1 p-3 bg-transparent text-sm text-blue-300 font-mono resize-none outline-none nopan"
             value={userText}
             onChange={handleTextChange}
             placeholder="Enter text value..."
             onMouseDown={(e) => {
-              e.stopPropagation();
+              if (e.button === 0) {  // Only block left click (0)
+                e.stopPropagation();
+              }
             }}
             onWheel={(e) => {
-              e.stopPropagation();
+              // Only stop propagation if textarea has scroll
+              const hasScroll = e.currentTarget.scrollHeight > e.currentTarget.clientHeight;
+              if (hasScroll && e.currentTarget === e.target) {
+                e.stopPropagation();
+              }
             }}
           />
         </div>
@@ -224,19 +239,21 @@ export default function TextInputNode(props: NodeProps<TextInputNodeType>) {
         {/* Resize handle */}
         <div
           onMouseDown={handleResize}
-          onPointerDown={(e) => e.stopPropagation()}
-          onMouseEnter={(e) => {
-            e.stopPropagation();
+          onPointerDown={(e) => {
+            // Only block left click for resize
+            if (e.button === 0) {
+              e.stopPropagation();
+            }
+          }}
+          onMouseEnter={() => {
             document.body.style.cursor = 'nwse-resize';
           }}
-          onMouseLeave={(e) => {
-            e.stopPropagation();
+          onMouseLeave={() => {
             if (!isResizing) {
               document.body.style.cursor = '';
             }
           }}
           className="nodrag absolute bottom-0 right-0 w-4 h-4 cursor-nwse-resize group z-20"
-          style={{ pointerEvents: 'auto' }}
         >
           <div className="absolute bottom-0 right-0 w-full h-full pointer-events-none">
             {/* Three dots pattern for better visibility */}
