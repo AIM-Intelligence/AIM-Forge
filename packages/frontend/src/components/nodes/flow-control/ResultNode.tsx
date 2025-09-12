@@ -36,7 +36,9 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
   const [dimensions, setDimensions] = useState({ width: 300, height: 200 });
   const [isResizing, setIsResizing] = useState(false);
   const [userText, setUserText] = useState<string>("");
+  const [isFocused, setIsFocused] = useState(false);
   const nodeRef = useRef<HTMLDivElement>(null);
+  const textRef = useRef<HTMLTextAreaElement>(null);
   const didInitCache = useRef(false);
   const { projectId } = useParams<{ projectId: string }>();
   const { getZoom } = useReactFlow();
@@ -58,6 +60,18 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
   
   // Node value store for persistence
   const { setNodeValue, clearNodeValue } = useNodeValueStore();
+
+  // Check if textarea can scroll - calculate in real-time
+  const canScroll = () => {
+    const el = textRef.current;
+    const scrollable = !!el && el.scrollHeight > el.clientHeight;
+    console.log('Scroll check:', { 
+      scrollHeight: el?.scrollHeight, 
+      clientHeight: el?.clientHeight, 
+      canScroll: scrollable 
+    });
+    return scrollable;
+  };
 
   // Safe preview formatter with length limit and circular reference handling
   const formatPreview = useCallback((value: unknown): string => {
@@ -159,6 +173,42 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
     // Update node value store for data flow
     setNodeValue(props.id, actualValue);
   }, [nodeExecutionResult, formatPreview, setNodeValue, props.id]);
+
+  // Handle focus for scrolling
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isFocused) {
+        setIsFocused(false);
+        console.log('Focus deactivated via ESC');
+      }
+    };
+    
+    const handleClickOutside = (e: MouseEvent) => {
+      if (isFocused && nodeRef.current && !nodeRef.current.contains(e.target as HTMLElement)) {
+        setIsFocused(false);
+        console.log('Focus deactivated via outside click');
+      }
+    };
+    
+    // Handle global focus events - only one ResultNode can be focused at a time
+    const handleGlobalFocus = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail.nodeId !== props.id && isFocused) {
+        setIsFocused(false);
+        console.log('Focus deactivated by another ResultNode');
+      }
+    };
+    
+    document.addEventListener('keydown', handleEscape);
+    document.addEventListener('mousedown', handleClickOutside);
+    window.addEventListener('resultNodeFocus', handleGlobalFocus);
+    
+    return () => {
+      document.removeEventListener('keydown', handleEscape);
+      document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('resultNodeFocus', handleGlobalFocus);
+    };
+  }, [isFocused, props.id]);
 
   // Handle node deletion
   const handleDelete = (e: React.MouseEvent) => {
@@ -311,9 +361,9 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
       <div
         ref={nodeRef}
         className={clsx(
-          "bg-neutral-900 rounded-lg border border-neutral-600 relative",
-          "select-none",
-          hovering && !isResizing && "border-neutral-400",
+          "bg-neutral-900 rounded-lg border relative select-none",
+          isFocused ? "border-green-500" : "border-neutral-600",
+          hovering && !isResizing && !isFocused && "border-neutral-400",
           isResizing && "shadow-xl border-blue-500"
         )}
         style={{
@@ -325,47 +375,82 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
       >
         {/* Inner container with overflow control */}
         <div className="flex flex-col h-full overflow-hidden rounded-lg">
-          {/* Delete button */}
+          {/* Top buttons - Delete and Download */}
           {hovering && (
-            <button
-              onClick={handleDelete}
-              className="absolute top-2 right-2 w-5 h-5 bg-red-500/80 text-white rounded flex items-center justify-center text-xs hover:bg-red-600 transition-colors z-10"
-            >
-              ✕
-            </button>
+            <>
+              {/* Download button */}
+              {userText && (
+                <button
+                  onClick={handleGetResult}
+                  className="absolute top-2 right-9 w-5 h-5 bg-neutral-600/80 text-white rounded flex items-center justify-center text-xs hover:bg-green-600 transition-colors z-10"
+                  title="Download"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                    className="w-3 h-3"
+                  >
+                    <path d="M10.75 2.75a.75.75 0 00-1.5 0v8.614L6.295 8.235a.75.75 0 10-1.09 1.03l4.25 4.5a.75.75 0 001.09 0l4.25-4.5a.75.75 0 00-1.09-1.03l-2.955 3.129V2.75z" />
+                    <path d="M3.5 12.75a.75.75 0 00-1.5 0v2.5A2.75 2.75 0 004.75 18h10.5A2.75 2.75 0 0018 15.25v-2.5a.75.75 0 00-1.5 0v2.5c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-2.5z" />
+                  </svg>
+                </button>
+              )}
+              
+              {/* Delete button */}
+              <button
+                onClick={handleDelete}
+                className="absolute top-2 right-2 w-5 h-5 bg-red-500/80 text-white rounded flex items-center justify-center text-xs hover:bg-red-600 transition-colors z-10"
+              >
+                ✕
+              </button>
+            </>
           )}
 
           {/* Read-only text area */}
           <textarea
-            className="flex-1 p-3 bg-transparent text-sm text-green-400 font-mono resize-none outline-none nopan cursor-default"
+            ref={textRef}
+            className={clsx(
+              "flex-1 p-3 bg-transparent text-sm text-green-400 font-mono resize-none outline-none transition-all overscroll-contain",
+              // Custom scrollbar styling
+              "[&::-webkit-scrollbar]:w-2",
+              "[&::-webkit-scrollbar-track]:bg-neutral-800",
+              "[&::-webkit-scrollbar-thumb]:bg-neutral-600",
+              "[&::-webkit-scrollbar-thumb]:rounded-full",
+              "[&::-webkit-scrollbar-thumb:hover]:bg-neutral-500",
+              // Apply blocking classes when focused and scrollable (no nopan to avoid breaking panning)
+              isFocused && canScroll() && "nowheel nodrag",
+              // Always show scrollbar when content overflows
+              "overflow-y-auto",
+              userText ? "cursor-pointer" : "cursor-default"
+            )}
             value={userText}
             readOnly
             placeholder={isMyPipelineExecuting ? "Executing..." : "Run the flow to see results..."}
+            onClick={() => {
+              if (userText && !isFocused) {
+                // Dispatch event to clear other focused ResultNodes
+                window.dispatchEvent(new CustomEvent('resultNodeFocus', { 
+                  detail: { nodeId: props.id } 
+                }));
+                setIsFocused(true);
+                console.log('Focus activated on ResultNode:', props.id);
+              }
+            }}
             onMouseDown={(e) => {
-              if (e.button === 0) {  // Only block left click (0)
+              // Only stop propagation when already focused to allow click event to fire
+              if (e.button === 0 && isFocused) {
                 e.stopPropagation();
               }
             }}
-            onWheel={(e) => {
-              // Only stop propagation if textarea has scroll
-              const hasScroll = e.currentTarget.scrollHeight > e.currentTarget.clientHeight;
-              if (hasScroll && e.currentTarget === e.target) {
+            onWheelCapture={(e) => {
+              // Use capture phase to intercept before React Flow
+              if (isFocused && canScroll()) {
                 e.stopPropagation();
+                console.log('Scrolling inside ResultNode');
               }
             }}
           />
-
-          {/* Download button */}
-          {userText && (
-            <div className="border-t border-neutral-700 p-2">
-              <button
-                className="text-xs px-2 py-1 bg-neutral-800 text-neutral-300 hover:bg-neutral-700 hover:text-white rounded transition-colors w-full"
-                onClick={handleGetResult}
-              >
-                Download
-              </button>
-            </div>
-          )}
         </div>
 
         {/* Resize handle */}
