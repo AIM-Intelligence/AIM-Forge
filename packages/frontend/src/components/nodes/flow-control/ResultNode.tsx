@@ -62,18 +62,6 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
   // Node value store for persistence
   const { setNodeValue, clearNodeValue } = useNodeValueStore();
 
-  // Check if textarea can scroll - calculate in real-time
-  const canScroll = () => {
-    const el = textRef.current;
-    const scrollable = !!el && el.scrollHeight > el.clientHeight;
-    console.log('Scroll check:', { 
-      scrollHeight: el?.scrollHeight, 
-      clientHeight: el?.clientHeight, 
-      canScroll: scrollable 
-    });
-    return scrollable;
-  };
-
   // Safe preview formatter with length limit and circular reference handling
   const formatPreview = useCallback((value: unknown): string => {
     if (value === null || value === undefined) return "";

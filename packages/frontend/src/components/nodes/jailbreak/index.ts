@@ -9,15 +9,6 @@ export {};
 // Export metadata for component library
 export const jailbreakComponents = [
   {
-    id: "gcg-attack",
-    name: "GCG Attack",
-    description: "Greedy Coordinate Gradient attack",
-    icon: "🎯",
-    template: "jailbreak/gcg_attack",
-    nodeType: "custom",
-    // No special component needed, uses DefaultNode
-  },
-  {
     id: "aim-stinger",
     name: "AIM Stinger",
     description: "Multi-turn jailbreak attack via external API",
