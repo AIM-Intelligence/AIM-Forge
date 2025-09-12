@@ -269,6 +269,15 @@ export default function TextInputNode(props: NodeProps<TextInputNodeType>) {
                   detail: { nodeId: props.id } 
                 }));
                 setIsFocused(true);
+                
+                // Immediately focus the textarea for single-click editing
+                setTimeout(() => {
+                  if (textRef.current) {
+                    textRef.current.focus();
+                    // Place cursor at the end of text
+                    textRef.current.setSelectionRange(userText.length, userText.length);
+                  }
+                }, 0);
               }}
             />
           )}

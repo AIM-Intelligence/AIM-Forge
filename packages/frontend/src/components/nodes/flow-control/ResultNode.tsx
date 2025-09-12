@@ -37,6 +37,7 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
   const [isResizing, setIsResizing] = useState(false);
   const [userText, setUserText] = useState<string>("");
   const [isFocused, setIsFocused] = useState(false);
+  const [hasScrollbar, setHasScrollbar] = useState(false);
   const nodeRef = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLTextAreaElement>(null);
   const didInitCache = useRef(false);
@@ -174,6 +175,30 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
     setNodeValue(props.id, actualValue);
   }, [nodeExecutionResult, formatPreview, setNodeValue, props.id]);
 
+  // Monitor scrollbar changes with ResizeObserver
+  useEffect(() => {
+    if (!textRef.current) return;
+    
+    const checkScrollbar = () => {
+      const el = textRef.current;
+      if (el) {
+        const newHasScrollbar = el.scrollHeight > el.clientHeight;
+        setHasScrollbar(newHasScrollbar);
+      }
+    };
+    
+    // Initial check
+    checkScrollbar();
+    
+    // Set up ResizeObserver to monitor changes
+    const resizeObserver = new ResizeObserver(checkScrollbar);
+    resizeObserver.observe(textRef.current);
+    
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [userText]); // Re-setup when text changes
+  
   // Handle focus for scrolling
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -384,7 +409,7 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
                   onClick={handleGetResult}
                   className={clsx(
                     "absolute top-2 w-5 h-5 bg-neutral-600/80 text-white rounded flex items-center justify-center text-xs hover:bg-green-600 transition-colors z-10",
-                    canScroll() ? "right-10" : "right-8"
+                    hasScrollbar ? "right-10" : "right-8"
                   )}
                   title="Download"
                 >
@@ -405,7 +430,7 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
                 onClick={handleDelete}
                 className={clsx(
                   "absolute top-2 w-5 h-5 bg-red-500/80 text-white rounded flex items-center justify-center text-xs hover:bg-red-600 transition-colors z-10",
-                  canScroll() ? "right-3.5" : "right-2"
+                  hasScrollbar ? "right-3.5" : "right-2"
                 )}
               >
                 ✕
@@ -443,7 +468,7 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
               "[&::-webkit-scrollbar-thumb]:rounded-full",
               "[&::-webkit-scrollbar-thumb:hover]:bg-neutral-500",
               // Apply blocking classes when focused (nodrag always, nowheel only when scrollable)
-              isFocused && (canScroll() ? "nowheel nodrag" : "nodrag"),
+              isFocused && (hasScrollbar ? "nowheel nodrag" : "nodrag"),
               // Always show scrollbar when content overflows
               "overflow-y-auto"
             )}
@@ -452,7 +477,7 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
             placeholder={isMyPipelineExecuting ? "Executing..." : "Run the flow to see results..."}
             onWheelCapture={(e) => {
               // Use capture phase to intercept before React Flow
-              if (isFocused && canScroll()) {
+              if (isFocused && hasScrollbar) {
                 e.stopPropagation();
               }
             }}
