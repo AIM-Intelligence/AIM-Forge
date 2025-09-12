@@ -245,15 +245,32 @@ export default function TextInputNode(props: NodeProps<TextInputNodeType>) {
         onMouseLeave={() => setHovering(false)}
       >
         {/* Inner container with overflow control */}
-        <div className="flex flex-col h-full overflow-hidden rounded-lg">
+        <div className="flex flex-col h-full overflow-hidden rounded-lg relative">
           {/* Delete button */}
           {hovering && (
             <button
               onClick={handleDelete}
-              className="absolute top-2 right-5 w-5 h-5 bg-red-500/80 text-white rounded flex items-center justify-center text-xs hover:bg-red-600 transition-colors z-10"
+              className={clsx(
+                "absolute top-2 w-5 h-5 bg-red-500/80 text-white rounded flex items-center justify-center text-xs hover:bg-red-600 transition-colors z-10",
+                canScroll() ? "right-3.5" : "right-2"
+              )}
             >
               ✕
             </button>
+          )}
+
+          {/* Focus overlay - only when not focused */}
+          {!isFocused && (
+            <div
+              className="absolute inset-0 z-[5] cursor-pointer"
+              onClick={(e) => {
+                e.stopPropagation();
+                window.dispatchEvent(new CustomEvent('textInputNodeFocus', { 
+                  detail: { nodeId: props.id } 
+                }));
+                setIsFocused(true);
+              }}
+            />
           )}
 
           {/* Editable text area - takes full space */}
@@ -261,32 +278,26 @@ export default function TextInputNode(props: NodeProps<TextInputNodeType>) {
             ref={textRef}
             className={clsx(
               "flex-1 p-3 bg-transparent text-sm text-blue-300 font-mono resize-none outline-none transition-all overscroll-contain",
+              // Pointer events control based on focus
+              isFocused ? "pointer-events-auto cursor-text" : "pointer-events-none",
+              !isFocused && "select-none",
               // Custom scrollbar styling
               "[&::-webkit-scrollbar]:w-2",
               "[&::-webkit-scrollbar-track]:bg-neutral-800",
               "[&::-webkit-scrollbar-thumb]:bg-neutral-600",
               "[&::-webkit-scrollbar-thumb]:rounded-full",
               "[&::-webkit-scrollbar-thumb:hover]:bg-neutral-500",
-              // Apply blocking classes when focused and scrollable
-              isFocused && canScroll() && "nowheel nodrag",
+              // Apply blocking classes when focused (nodrag always, nowheel only when scrollable)
+              isFocused && (canScroll() ? "nowheel nodrag" : "nodrag"),
               // Always show scrollbar when content overflows
-              "overflow-y-auto",
-              userText ? "cursor-text" : "cursor-text"
+              "overflow-y-auto"
             )}
             value={userText}
             onChange={handleTextChange}
             placeholder="Enter text value..."
-            onClick={() => {
-              if (!isFocused) {
-                // Dispatch event to clear other focused TextInputNodes
-                window.dispatchEvent(new CustomEvent('textInputNodeFocus', { 
-                  detail: { nodeId: props.id } 
-                }));
-                setIsFocused(true);
-              }
-            }}
             onMouseDown={(e) => {
               if (e.button === 0 && isFocused) {
+                // Prevent node dragging when focused
                 e.stopPropagation();
               }
             }}
