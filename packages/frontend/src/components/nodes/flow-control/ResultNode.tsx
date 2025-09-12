@@ -382,7 +382,7 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
               {userText && (
                 <button
                   onClick={handleGetResult}
-                  className="absolute top-2 right-9 w-5 h-5 bg-neutral-600/80 text-white rounded flex items-center justify-center text-xs hover:bg-green-600 transition-colors z-10"
+                  className="absolute top-2 right-10 w-5 h-5 bg-neutral-600/80 text-white rounded flex items-center justify-center text-xs hover:bg-green-600 transition-colors z-10"
                   title="Download"
                 >
                   <svg
@@ -400,7 +400,7 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
               {/* Delete button */}
               <button
                 onClick={handleDelete}
-                className="absolute top-2 right-2 w-5 h-5 bg-red-500/80 text-white rounded flex items-center justify-center text-xs hover:bg-red-600 transition-colors z-10"
+                className="absolute top-2 right-3.5 w-5 h-5 bg-red-500/80 text-white rounded flex items-center justify-center text-xs hover:bg-red-600 transition-colors z-10"
               >
                 ✕
               </button>

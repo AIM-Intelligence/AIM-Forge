@@ -23,7 +23,9 @@ export default function TextInputNode(props: NodeProps<TextInputNodeType>) {
   const [dimensions, setDimensions] = useState({ width: 300, height: 150 });
   const [isResizing, setIsResizing] = useState(false);
   const [userText, setUserText] = useState<string>("");
+  const [isFocused, setIsFocused] = useState(false);
   const nodeRef = useRef<HTMLDivElement>(null);
+  const textRef = useRef<HTMLTextAreaElement>(null);
   const { projectId } = useParams<{ projectId: string }>();
   const setNodeResult = useExecutionStore((state) => state.setNodeResult);
   const { setNodeValue, getNodeValue } = useNodeValueStore();
@@ -50,6 +52,45 @@ export default function TextInputNode(props: NodeProps<TextInputNodeType>) {
       }
     }
   }, [projectId, props.id, props.data?.dimensions]);
+
+  // Check if textarea can scroll - calculate in real-time
+  const canScroll = () => {
+    const el = textRef.current;
+    return !!el && el.scrollHeight > el.clientHeight;
+  };
+
+  // Handle focus for scrolling
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isFocused) {
+        setIsFocused(false);
+      }
+    };
+    
+    const handleClickOutside = (e: MouseEvent) => {
+      if (isFocused && nodeRef.current && !nodeRef.current.contains(e.target as HTMLElement)) {
+        setIsFocused(false);
+      }
+    };
+    
+    // Handle global focus events - only one TextInputNode can be focused at a time
+    const handleGlobalFocus = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail.nodeId !== props.id && isFocused) {
+        setIsFocused(false);
+      }
+    };
+    
+    document.addEventListener('keydown', handleEscape);
+    document.addEventListener('mousedown', handleClickOutside);
+    window.addEventListener('textInputNodeFocus', handleGlobalFocus);
+    
+    return () => {
+      document.removeEventListener('keydown', handleEscape);
+      document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('textInputNodeFocus', handleGlobalFocus);
+    };
+  }, [isFocused, props.id]);
 
   // Load saved value from localStorage on mount and when id changes
   useEffect(() => {
@@ -191,9 +232,9 @@ export default function TextInputNode(props: NodeProps<TextInputNodeType>) {
       <div
         ref={nodeRef}
         className={clsx(
-          "bg-neutral-900 rounded-lg border border-blue-600 relative",
-          "select-none",
-          hovering && !isResizing && "border-blue-400",
+          "bg-neutral-900 rounded-lg border relative select-none",
+          isFocused ? "border-blue-500" : "border-neutral-600",
+          hovering && !isResizing && !isFocused && "border-neutral-400",
           isResizing && "shadow-xl border-blue-500"
         )}
         style={{
@@ -209,7 +250,7 @@ export default function TextInputNode(props: NodeProps<TextInputNodeType>) {
           {hovering && (
             <button
               onClick={handleDelete}
-              className="absolute top-2 right-2 w-5 h-5 bg-red-500/80 text-white rounded flex items-center justify-center text-xs hover:bg-red-600 transition-colors z-10"
+              className="absolute top-2 right-5 w-5 h-5 bg-red-500/80 text-white rounded flex items-center justify-center text-xs hover:bg-red-600 transition-colors z-10"
             >
               ✕
             </button>
@@ -217,19 +258,41 @@ export default function TextInputNode(props: NodeProps<TextInputNodeType>) {
 
           {/* Editable text area - takes full space */}
           <textarea
-            className="flex-1 p-3 bg-transparent text-sm text-blue-300 font-mono resize-none outline-none nopan"
+            ref={textRef}
+            className={clsx(
+              "flex-1 p-3 bg-transparent text-sm text-blue-300 font-mono resize-none outline-none transition-all overscroll-contain",
+              // Custom scrollbar styling
+              "[&::-webkit-scrollbar]:w-2",
+              "[&::-webkit-scrollbar-track]:bg-neutral-800",
+              "[&::-webkit-scrollbar-thumb]:bg-neutral-600",
+              "[&::-webkit-scrollbar-thumb]:rounded-full",
+              "[&::-webkit-scrollbar-thumb:hover]:bg-neutral-500",
+              // Apply blocking classes when focused and scrollable
+              isFocused && canScroll() && "nowheel nodrag",
+              // Always show scrollbar when content overflows
+              "overflow-y-auto",
+              userText ? "cursor-text" : "cursor-text"
+            )}
             value={userText}
             onChange={handleTextChange}
             placeholder="Enter text value..."
+            onClick={() => {
+              if (!isFocused) {
+                // Dispatch event to clear other focused TextInputNodes
+                window.dispatchEvent(new CustomEvent('textInputNodeFocus', { 
+                  detail: { nodeId: props.id } 
+                }));
+                setIsFocused(true);
+              }
+            }}
             onMouseDown={(e) => {
-              if (e.button === 0) {  // Only block left click (0)
+              if (e.button === 0 && isFocused) {
                 e.stopPropagation();
               }
             }}
-            onWheel={(e) => {
-              // Only stop propagation if textarea has scroll
-              const hasScroll = e.currentTarget.scrollHeight > e.currentTarget.clientHeight;
-              if (hasScroll && e.currentTarget === e.target) {
+            onWheelCapture={(e) => {
+              // Use capture phase to intercept before React Flow
+              if (isFocused && canScroll()) {
                 e.stopPropagation();
               }
             }}
