@@ -38,6 +38,8 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
   const [userText, setUserText] = useState<string>("");
   const [isFocused, setIsFocused] = useState(false);
   const [hasScrollbar, setHasScrollbar] = useState(false);
+  const [hasError, setHasError] = useState(false);
+  const [errorType, setErrorType] = useState<'primary' | 'skipped' | null>(null);
   const nodeRef = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLTextAreaElement>(null);
   const didInitCache = useRef(false);
@@ -125,14 +127,100 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
   useEffect(() => {
     // If this node is executing and has no result (was cleared), clear the display
     // This happens when StartNode clears output Result nodes but preserves input Result nodes
-    if (isMyPipelineExecuting && nodeExecutionResult === undefined && userText.length > 0) {
+    if (isMyPipelineExecuting && nodeExecutionResult === undefined) {
       setUserText("");
+      setHasError(false);  // Reset error state for clean execution
+      setErrorType(null);  // Clear error type so "Executing..." shows in green
     }
   }, [isMyPipelineExecuting, nodeExecutionResult]);
+
+  // ✅ Reset error colors when execution starts
+  useEffect(() => {
+    if (isMyPipelineExecuting) {
+      setHasError(false);
+      setErrorType(null);
+    }
+  }, [isMyPipelineExecuting]);
 
   // ✅ Update when real-time execution result arrives
   useEffect(() => {
     if (!nodeExecutionResult) return;
+    
+    // Check if this is an error result
+    if (nodeExecutionResult.status === 'error') {
+      // Check error type from backend
+      const errorInfo = nodeExecutionResult.output as any;
+      if (errorInfo && errorInfo._error) {
+        if (errorInfo.error_type === 'primary') {
+          // Format primary error display with full details
+          const errorDisplay = [
+            '❌ ERROR',
+            '─'.repeat(50),
+            '',
+            '💡 Error Message:',
+            nodeExecutionResult.error || errorInfo.error || 'Unknown error',
+            '',
+            '📋 Full Traceback:',
+            '─'.repeat(50),
+            nodeExecutionResult.logs || errorInfo.logs || 'No traceback available',
+          ].join('\n');
+          // Set all states together to avoid flicker
+          setHasError(true);
+          setErrorType('primary');
+          setUserText(errorDisplay);
+        } else {
+          // This should not happen with the new logic, but handle just in case
+          setHasError(true);
+          setErrorType('primary');
+          setUserText('Error: ' + (nodeExecutionResult.error || 'Unknown error'));
+        }
+      } else {
+        // Fallback for non-structured errors
+        const errorDisplay = [
+          '❌ ERROR',
+          '─'.repeat(50),
+          '',
+          '💡 Error Message:',
+          nodeExecutionResult.error || 'Unknown error',
+          '',
+          '📋 Full Traceback:',
+          '─'.repeat(50),
+          nodeExecutionResult.logs || 'No traceback available',
+        ].join('\n');
+        // Set all states together
+        setHasError(true);
+        setErrorType('primary');
+        setUserText(errorDisplay);
+      }
+      
+      // Clear stored value on error
+      clearNodeValue(props.id);
+      return;
+    }
+    
+    // Check if this node was skipped
+    if (nodeExecutionResult.status === 'skipped') {
+      // Format skipped display
+      const skippedDisplay = [
+        '⏭️ SKIPPED',
+        '─'.repeat(50),
+        '',
+        nodeExecutionResult.error || 'Execution stopped due to upstream error',
+      ].join('\n');
+      
+      // Set all states together to avoid flicker
+      setHasError(true);
+      setErrorType('skipped');
+      setUserText(skippedDisplay);
+      
+      // Clear stored value when skipped
+      clearNodeValue(props.id);
+      return;
+    }
+    
+    // Success case - reset error state
+    setHasError(false);
+    setErrorType(null);
     
     // Extract the actual value from execution result
     let actualValue = nodeExecutionResult.output;
@@ -161,7 +249,7 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
     
     // Update node value store for data flow
     setNodeValue(props.id, actualValue);
-  }, [nodeExecutionResult, formatPreview, setNodeValue, props.id]);
+  }, [nodeExecutionResult, formatPreview, setNodeValue, clearNodeValue, props.id]);
 
   // Monitor scrollbar changes with ResizeObserver
   useEffect(() => {
@@ -375,8 +463,15 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
         ref={nodeRef}
         className={clsx(
           "bg-neutral-900 rounded-lg border relative select-none",
-          isFocused ? "border-green-500" : "border-neutral-600",
+          // Focus states
+          isFocused && !hasError && "border-green-500",
+          isFocused && hasError && errorType === 'primary' && "border-red-500",
+          isFocused && hasError && errorType === 'skipped' && "border-gray-400",
+          // Default unfocused (all types)
+          !isFocused && "border-neutral-600",
+          // Hover state
           hovering && !isResizing && !isFocused && "border-neutral-400",
+          // Resize state
           isResizing && "shadow-xl border-blue-500"
         )}
         style={{
@@ -426,8 +521,8 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
             </>
           )}
 
-          {/* Focus overlay - only when not focused and has text */}
-          {!isFocused && userText && (
+          {/* Focus overlay - when not focused and has content (text or error) */}
+          {!isFocused && (userText || hasError) && (
             <div
               className="absolute inset-0 z-[5] cursor-pointer"
               onClick={(e) => {
@@ -445,7 +540,13 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
           <textarea
             ref={textRef}
             className={clsx(
-              "flex-1 p-3 bg-transparent text-sm text-green-400 font-mono resize-none outline-none transition-all overscroll-contain",
+              "flex-1 p-3 bg-transparent text-sm font-mono resize-none outline-none overscroll-contain",
+              // Color based on text content, not state
+              userText?.startsWith('❌ ERROR') && "text-red-400",
+              userText?.startsWith('⏭️ SKIPPED') && "text-gray-400",
+              (!userText || userText === "" || (!userText.startsWith('❌') && !userText.startsWith('⏭️'))) && "text-green-400",
+              // Force green color for placeholder during execution
+              isMyPipelineExecuting && !userText && "!text-green-400 placeholder:!text-green-400",
               // Pointer events control based on focus
               isFocused ? "pointer-events-auto" : "pointer-events-none",
               !isFocused && "select-none",

@@ -115,7 +115,9 @@ class EnhancedFlowExecutor(FlowExecutor):
         # Handle result nodes
         if node_type == "result":
             # Check if there's a stored value for this result node
-            stored_value = result_node_values.get(node_id) if result_node_values else None
+            stored_value = (
+                result_node_values.get(node_id) if result_node_values else None
+            )
 
             # Determine if we should use stored value or new input
             # If we have new input (this Result node receives data from upstream nodes), use it
@@ -127,6 +129,19 @@ class EnhancedFlowExecutor(FlowExecutor):
                     key = list(input_data.keys())[0]
                     if key.startswith("input_"):
                         input_data = input_data[key]
+
+                # Check if the input is an error from upstream node
+                if isinstance(input_data, dict) and input_data.get("_error") == True:
+                    # This is an error from upstream, return it as error status
+                    return {
+                        "status": "error",
+                        "error": input_data.get(
+                            "error", "Unknown error from upstream node"
+                        ),
+                        "logs": input_data.get("logs", ""),
+                        "execution_time_ms": 0,
+                        "output": None,
+                    }
             elif stored_value is not None:
                 # No new input, but we have a stored value from previous execution
                 # This Result node is being used as an input source
@@ -270,11 +285,24 @@ class EnhancedFlowExecutor(FlowExecutor):
             }
 
         except Exception as e:
+            error_msg = str(e)
+            full_traceback = traceback.format_exc()
+
+            # for debugging
+            # print(f"\n{'='*60}")
+            # print(f"🔴 NODE EXECUTION ERROR - Node: {node_id}")
+            # print(f"{'='*60}")
+            # print(f"Error Type: {type(e).__name__}")
+            # print(f"Error Message: {error_msg}")
+            # print(f"\nFull Traceback:")
+            # print(full_traceback)
+            # print('='*60 + '\n')
+
             return {
                 "status": "error",
-                "error": str(e),
+                "error": error_msg,
                 "execution_time_ms": 0,
-                "logs": traceback.format_exc(),
+                "logs": full_traceback,
             }
 
     def _execute_in_process(
@@ -509,7 +537,11 @@ class EnhancedFlowExecutor(FlowExecutor):
                 return func()
 
         except TypeError as e:
-            # Handle parameter mismatch errors
+            # Handle parameter mismatch errors only
+            # Don't retry for RunScript functions - they should always use kwargs
+            if func.__name__ == "RunScript":
+                raise
+            
             if "missing" in str(e) and "required positional argument" in str(e):
                 # Try calling with no arguments if it's expecting nothing
                 try:
@@ -523,14 +555,9 @@ class EnhancedFlowExecutor(FlowExecutor):
             else:
                 return func()
         except Exception:
-            # Final fallback
-            if input_data is not None:
-                try:
-                    return func(input_data)
-                except:
-                    return func()
-            else:
-                return func()
+            # For any other exception (ZeroDivisionError, ValueError, etc.)
+            # Don't retry - just raise the original exception
+            raise
 
     def _unwrap_input(self, project_id: str, data: Any) -> Any:
         """Convert references to actual objects from the object store"""
@@ -941,6 +968,13 @@ class EnhancedFlowExecutor(FlowExecutor):
         execution_results = {}
         node_outputs = {}
         result_nodes = {}
+        
+        # Execution control dictionary to share state between async tasks
+        execution_control = {
+            "stopped": False,
+            "error_node_id": None,
+            "error_node_title": None
+        }
 
         # Filter execution order to count only main processing components
         # Exclude: start nodes, result nodes, and text input nodes from progress count
@@ -1012,8 +1046,59 @@ class EnhancedFlowExecutor(FlowExecutor):
         completed_nodes = set()
         completed_main_components = 0  # Track how many main components have completed
 
+        # Track nodes directly connected to error node to allow them to receive error
+        error_downstream_nodes = set()
+        
         # Process nodes in levels (nodes that can execute in parallel)
         while len(completed_nodes) < len(execution_order):
+            # Check if execution was stopped due to error
+            if execution_control["stopped"]:
+                # If this is the first check after error, identify direct downstream Result nodes only
+                if not error_downstream_nodes and execution_control["error_node_id"]:
+                    # Find Result nodes directly connected to the error node
+                    for edge in edges:
+                        if edge["source"] == execution_control["error_node_id"]:
+                            target_node = nodes.get(edge["target"], {})
+                            # Only allow Result nodes to receive error information
+                            if target_node.get("type") == "result":
+                                error_downstream_nodes.add(edge["target"])
+                
+                # Allow direct downstream nodes to execute to receive the error
+                # Skip all other remaining nodes
+                for node_id in execution_order:
+                    if node_id not in completed_nodes and node_id not in error_downstream_nodes:
+                        node_data = nodes[node_id]
+                        
+                        # Create skipped result
+                        skipped_result = {
+                            "status": "skipped",
+                            "error": f"Execution stopped due to error in node: {execution_control['error_node_title']}",
+                            "execution_time_ms": 0,
+                            "logs": "",
+                            "skipped_reason": "upstream_error",
+                            "error_source": execution_control["error_node_id"]
+                        }
+                        
+                        execution_results[node_id] = skipped_result
+                        
+                        # Send skip event for main components
+                        if node_id in main_component_indices:
+                            yield {
+                                "type": "node_complete",
+                                "node_id": node_id,
+                                "node_title": node_data.get("data", {}).get("title", "Unknown"),
+                                "node_index": main_component_indices[node_id] + 1,
+                                "total_nodes": main_component_count,
+                                "result": skipped_result,
+                                "timestamp": time.time(),
+                            }
+                        
+                        completed_nodes.add(node_id)
+                
+                # If no direct downstream nodes remain, break
+                if not any(node in error_downstream_nodes and node not in completed_nodes for node in execution_order):
+                    break
+            
             # Find nodes that can execute now (dependencies satisfied)
             ready_nodes = []
             for node_id in execution_order:
@@ -1057,6 +1142,7 @@ class EnhancedFlowExecutor(FlowExecutor):
                         params,
                         timeout_sec,
                         halt_on_error,
+                        execution_control,
                     )
                 )
                 tasks.append(task)
@@ -1114,6 +1200,7 @@ class EnhancedFlowExecutor(FlowExecutor):
         params: Optional[Dict] = None,
         timeout_sec: int = 30,
         halt_on_error: bool = True,
+        execution_control: Optional[Dict] = None,  # Controls execution flow
     ):
         """Execute a single node and return streaming result"""
         try:
@@ -1206,6 +1293,22 @@ class EnhancedFlowExecutor(FlowExecutor):
                 # Handle result nodes
                 if node_data.get("type") == "result":
                     result_nodes[node_id] = result.get("output")
+            elif result["status"] == "error":
+                # Mark as primary error and stop execution
+                node_outputs[node_id] = {
+                    "_error": True,
+                    "error_type": "primary",
+                    "status": "error",
+                    "error": result.get("error"),
+                    "logs": result.get("logs"),
+                    "node_id": node_id,
+                }
+                
+                # Set flag to stop execution if execution_control is provided
+                if execution_control:
+                    execution_control["stopped"] = True
+                    execution_control["error_node_id"] = node_id
+                    execution_control["error_node_title"] = node_data.get("data", {}).get("title", "Unknown")
 
             # Return node completion event
             # Send updates for all nodes including Result nodes for real-time updates
