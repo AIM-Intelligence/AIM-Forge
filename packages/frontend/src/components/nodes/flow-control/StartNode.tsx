@@ -40,7 +40,7 @@ export default function StartNode(props: NodeProps<StartNodeType>) {
   const setExecuting = useExecutionStore((state) => state.setExecuting);
   const setToastMessage = useExecutionStore((state) => state.setToastMessage);
   const setRunId = useExecutionStore((state) => state.setRunId);
-  const resultNodes = useExecutionStore((state) => state.resultNodes);
+  const getResultNodeValues = useExecutionStore((state) => state.getResultNodeValues);
   const getAllNodeValues = useNodeValueStore((state) => state.getAllNodeValues);
 
   const handleRunFlow = async (e: React.MouseEvent) => {
@@ -73,8 +73,17 @@ export default function StartNode(props: NodeProps<StartNodeType>) {
     // Don't clear results to preserve values between flows
     // useExecutionStore.getState().clearResults();
 
-    // Get all node values (TextInput, ResultNode, etc.)
-    const allNodeValues = getAllNodeValues();
+    // Get all node values (TextInput nodes from nodeValueStore)
+    const textInputValues = getAllNodeValues();
+    
+    // Get Result node values from executionStore
+    const resultNodeValues = getResultNodeValues();
+    
+    // Combine both types of values
+    const allNodeValues = {
+      ...textInputValues,
+      ...resultNodeValues
+    };
 
     try {
       // Use SSE for streaming results

@@ -51,6 +51,7 @@ interface ExecutionState {
   // Pipeline-specific execution management
   setExecutingNodes: (nodeIds: string[]) => void;
   clearNodeResults: (nodeIds: string[]) => void;
+  getResultNodeValues: () => Record<string, unknown>;
   isNodeExecuting: (nodeId: string) => boolean;
 }
 
@@ -95,8 +96,7 @@ export const useExecutionStore = create<ExecutionState>((set, get) => ({
     // If it's a result node and has output, update resultNodes
     let updatedResultNodes = state.resultNodes;
     if (result.status === 'success' && result.output !== undefined) {
-      // Check if this is actually a result node (we don't have type info here)
-      // so we'll update it if it exists in resultNodes already or if output is present
+      // Store successful result node values for reuse
       updatedResultNodes = {
         ...state.resultNodes,
         [nodeId]: result.output,
@@ -180,5 +180,9 @@ export const useExecutionStore = create<ExecutionState>((set, get) => ({
 
   isNodeExecuting: (nodeId) => {
     return get().executingNodes.has(nodeId);
+  },
+
+  getResultNodeValues: () => {
+    return get().resultNodes;
   },
 }));

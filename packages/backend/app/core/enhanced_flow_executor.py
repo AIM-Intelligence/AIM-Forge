@@ -115,19 +115,24 @@ class EnhancedFlowExecutor(FlowExecutor):
         # Handle result nodes
         if node_type == "result":
             # Check if there's a stored value for this result node
-            stored_value = result_node_values.get(node_id)
+            stored_value = result_node_values.get(node_id) if result_node_values else None
 
-            # Don't reuse stored value - always use current input for consistency
-            # This ensures errors are properly reflected and not masked by previous success
+            # Determine if we should use stored value or new input
+            # If we have new input (this Result node receives data from upstream nodes), use it
+            # If no new input but we have stored value (this Result node is being used as input), use stored value
             if input_data is not None:
-                # We have new input, this will update the stored value
+                # We have new input from upstream nodes, this will update the stored value
                 # If input is a dict with single key like {"input_18": value}, unwrap it
                 if isinstance(input_data, dict) and len(input_data) == 1:
                     key = list(input_data.keys())[0]
                     if key.startswith("input_"):
                         input_data = input_data[key]
+            elif stored_value is not None:
+                # No new input, but we have a stored value from previous execution
+                # This Result node is being used as an input source
+                input_data = stored_value
             else:
-                # No stored value and no input
+                # No input and no stored value
                 input_data = ""
 
             # Wrap non-JSON serializable objects as references
