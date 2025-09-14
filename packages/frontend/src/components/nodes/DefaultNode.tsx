@@ -4,6 +4,7 @@ import clsx from "clsx";
 import LoadingModal from "../modal/LoadingModal";
 import type { NodeData } from "../../types";
 import { getComponent } from "./ComponentRegistry";
+import { useExecutionStore } from "../../stores/executionStore";
 
 export type DefaultNodeType = Node<NodeData>;
 
@@ -64,6 +65,12 @@ export default function DefaultNode(props: NodeProps & { data: NodeData }) {
     message: "",
     resultData: undefined,
   });
+
+  // Check execution error state
+  const nodeExecutionResult = useExecutionStore(
+    state => state.executionResults[props.id]
+  );
+  const hasError = nodeExecutionResult?.status === 'error';
 
   /** 실제 폰트 폭으로 라벨 너비 측정 */
   const [inW, setInW] = useState(0);
@@ -166,8 +173,9 @@ export default function DefaultNode(props: NodeProps & { data: NodeData }) {
 
       <div
         className={clsx(
-          "bg-black rounded-lg border-2 border-neutral-500 relative box-border",
-          hovering && "border-red-400 shadow-lg"
+          "bg-black rounded-lg border-2 relative box-border",
+          hasError ? "border-red-500" : "border-neutral-500",
+          hovering && !hasError && "border-red-400 shadow-lg"
         )}
         style={{
           width: `${nodeWidth}px`,
