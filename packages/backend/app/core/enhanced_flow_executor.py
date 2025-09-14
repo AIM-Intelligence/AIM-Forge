@@ -31,6 +31,9 @@ from .execute_code import execute_python_code
 class EnhancedFlowExecutor(FlowExecutor):
     """Enhanced Flow Executor that supports Python object passing between nodes"""
 
+    # Display configuration
+    MAX_DISPLAY_LENGTH = 30000  # Maximum characters to display in Result Node
+
     def __init__(self, projects_root: str):
         super().__init__(projects_root)
         # Object store for each project - stores Python objects that can't be JSON serialized
@@ -144,8 +147,8 @@ class EnhancedFlowExecutor(FlowExecutor):
 
                 # Apply size limit to prevent huge outputs
                 if isinstance(unwrapped, str):
-                    display_output = unwrapped[:1500] + (
-                        "..." if len(unwrapped) > 1500 else ""
+                    display_output = unwrapped[: self.MAX_DISPLAY_LENGTH] + (
+                        "..." if len(unwrapped) > self.MAX_DISPLAY_LENGTH else ""
                     )
                 elif isinstance(unwrapped, (dict, list)):
                     # Convert to JSON for readable display
@@ -153,29 +156,32 @@ class EnhancedFlowExecutor(FlowExecutor):
 
                     try:
                         json_str = json.dumps(unwrapped, indent=2, ensure_ascii=False)
-                        display_output = json_str[:1500] + (
-                            "..." if len(json_str) > 1500 else ""
+                        display_output = json_str[: self.MAX_DISPLAY_LENGTH] + (
+                            "..." if len(json_str) > self.MAX_DISPLAY_LENGTH else ""
                         )
                     except:
                         # Fallback to string representation
-                        display_output = str(unwrapped)[:1500]
+                        display_output = str(unwrapped)[: self.MAX_DISPLAY_LENGTH]
                 else:
-                    display_output = str(unwrapped)[:1500]
+                    display_output = str(unwrapped)[: self.MAX_DISPLAY_LENGTH]
             else:
                 # Not a reference, check if it needs truncation
-                if isinstance(input_data, str) and len(input_data) > 1500:
-                    display_output = input_data[:1500] + "..."
+                if (
+                    isinstance(input_data, str)
+                    and len(input_data) > self.MAX_DISPLAY_LENGTH
+                ):
+                    display_output = input_data[: self.MAX_DISPLAY_LENGTH] + "..."
                 elif isinstance(input_data, (dict, list)):
                     import json
 
                     try:
                         json_str = json.dumps(input_data, indent=2, ensure_ascii=False)
-                        if len(json_str) > 1500:
-                            display_output = json_str[:1500] + "..."
+                        if len(json_str) > self.MAX_DISPLAY_LENGTH:
+                            display_output = json_str[: self.MAX_DISPLAY_LENGTH] + "..."
                         else:
                             display_output = json_str
                     except:
-                        display_output = str(input_data)[:1500]
+                        display_output = str(input_data)[: self.MAX_DISPLAY_LENGTH]
 
             # For ResultNode, we need to pass through the actual value
             # while also providing display information
@@ -427,6 +433,7 @@ class EnhancedFlowExecutor(FlowExecutor):
             # AI model libraries
             "openai": __import__("openai"),
             "anthropic": __import__("anthropic"),
+            "together": __import__("together"),
         }
 
         # Don't import pandas/numpy here - let nodes import them if needed

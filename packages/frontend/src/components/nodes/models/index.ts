@@ -18,6 +18,15 @@ export const modelsComponents = [
     // No special component needed, uses DefaultNode
   },
   {
+    id: "gpt-chat",
+    name: "GPT Chat",
+    description: "대화 기록을 유지하는 GPT 모델",
+    icon: "💬",
+    template: "models/gpt_chat",
+    nodeType: "custom",
+    // No special component needed, uses DefaultNode
+  },
+  {
     id: "claude-model",
     name: "Claude Model",
     description: "Anthropic Claude 모델 호출",
@@ -26,7 +35,15 @@ export const modelsComponents = [
     nodeType: "custom",
     // No special component needed, uses DefaultNode
   },
+  {
+    id: "together-model",
+    name: "Together AI",
+    description: "오픈소스 모델 호출 (Llama, Mixtral 등)",
+    icon: "🤝",
+    template: "models/together_model",
+    nodeType: "custom",
+    // No special component needed, uses DefaultNode
+  },
   // Future components:
-  // { id: "llama-model", name: "Llama Model", ... },
   // { id: "gemini-model", name: "Gemini Model", ... },
 ];
