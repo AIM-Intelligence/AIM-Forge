@@ -5,7 +5,51 @@ GPT Chat - 대화 기록을 유지하는 OpenAI GPT 모델
 
 import os
 import openai
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
+
+# 모델 타입 정의
+CHAT_TEXT_MODELS = [
+    "gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini",
+    "gpt-4-turbo", "gpt-4", "gpt-3.5-turbo"
+]
+
+REASONING_MODELS = [
+    "gpt-5", "gpt-5-mini", "gpt-5-nano",
+    "o3", "o3-mini", "o3-pro", 
+    "o1", "o1-mini", "o1-pro"
+]
+
+
+def _mk_usage(usage_obj: Any) -> Optional[Dict[str, int]]:
+    """Responses API usage 객체를 dict로 정리."""
+    if not usage_obj:
+        return None
+    return {
+        "input_tokens": getattr(usage_obj, "input_tokens", None),
+        "output_tokens": getattr(usage_obj, "output_tokens", None),
+        "total_tokens": getattr(usage_obj, "total_tokens", None),
+    }
+
+
+def _call_responses(
+    client: openai.OpenAI,
+    *,
+    model: str,
+    prompt: str,
+    system_prompt: str,
+    max_tokens: int,
+    temperature: Optional[float] = None,
+):
+    """Responses API 호출 래퍼. temperature는 None이면 전달하지 않음."""
+    kwargs: Dict[str, Any] = {
+        "model": model,
+        "input": prompt,
+        "instructions": system_prompt,
+        "max_output_tokens": max_tokens,
+    }
+    if temperature is not None:
+        kwargs["temperature"] = temperature
+    return client.responses.create(**kwargs)
 
 
 def RunScript(
@@ -13,9 +57,9 @@ def RunScript(
     messages: List[Dict[str, str]] = None,  # 이전 대화 기록
     user_prompt: str = "",  # 새로운 사용자 메시지
     system_prompt: str = "",  # 시스템 프롬프트 (첫 대화에서만 사용)
-    model: str = "gpt-4o",  # gpt-4o, gpt-4-turbo, gpt-3.5-turbo
+    model: str = "gpt-4o-mini",  # 기본값을 gpt-4o-mini로 변경
     temperature: float = 0.7,
-    max_tokens: int = 5000,
+    max_tokens: int = 4096,
     api_key: Optional[str] = None,
 ) -> dict:
     """
@@ -93,56 +137,114 @@ def RunScript(
             return {"error": "대화를 시작하려면 user_prompt를 입력하세요"}
         
     # API 키 확인
-    api_key = api_key or os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return {"error": "OpenAI API 키가 설정되지 않았습니다"}
+    if not api_key and not os.environ.get("OPENAI_API_KEY"):
+        return {
+            "error": "OpenAI API 키가 설정되지 않았습니다",
+            "messages": conversation
+        }
     
     try:
         # OpenAI 클라이언트 초기화
         client = openai.OpenAI(api_key=api_key)
-        
-        # API 호출 파라미터
-        params = {
-            "model": model,
+    except Exception as e:
+        return {
+            "error": f"API 키 오류: {str(e)}",
             "messages": conversation
         }
+    
+    try:
+        # 대화 기록을 하나의 프롬프트로 변환
+        full_prompt = ""
+        for msg in conversation:
+            if msg["role"] == "system":
+                # 시스템 메시지는 instructions로 사용
+                system_prompt = msg["content"]
+            elif msg["role"] == "user":
+                full_prompt += f"User: {msg['content']}\n"
+            elif msg["role"] == "assistant":
+                full_prompt += f"Assistant: {msg['content']}\n"
         
-        # GPT-5 계열 확인
-        is_gpt5 = model.startswith("gpt-5") or "gpt-5" in model
+        # 최종 프롬프트 정리
+        full_prompt = full_prompt.strip()
+        if not full_prompt:
+            full_prompt = user_prompt or "Hello"
         
-        if not is_gpt5:
-            params["temperature"] = temperature
-            params["max_tokens"] = max_tokens
+        # 시스템 프롬프트가 없으면 기본값
+        if not system_prompt:
+            system_prompt = "You are a helpful assistant. Continue the conversation naturally."
+        
+        # Responses API 호출
+        if model in REASONING_MODELS:
+            # 추론 모델: temperature 미전달
+            resp = _call_responses(
+                client,
+                model=model,
+                prompt=full_prompt,
+                system_prompt=system_prompt,
+                max_tokens=max_tokens,
+                temperature=None,
+            )
+        elif model in CHAT_TEXT_MODELS:
+            # 채팅 모델: temperature 전달
+            resp = _call_responses(
+                client,
+                model=model,
+                prompt=full_prompt,
+                system_prompt=system_prompt,
+                max_tokens=max_tokens,
+                temperature=temperature,
+            )
         else:
-            params["max_completion_tokens"] = max_tokens
-        
-        # API 호출
-        response = client.chat.completions.create(**params)
+            # 알 수 없는 모델: temperature 없이 시도
+            resp = _call_responses(
+                client,
+                model=model,
+                prompt=full_prompt,
+                system_prompt=system_prompt,
+                max_tokens=max_tokens,
+                temperature=None,
+            )
         
         # 응답 추출
-        assistant_message = response.choices[0].message.content
+        assistant_message = getattr(resp, "output_text", None) or str(resp)
         
         # 대화 기록에 AI 응답 추가
         conversation.append({"role": "assistant", "content": assistant_message})
         
         # 토큰 사용량
-        usage = {
-            "prompt_tokens": response.usage.prompt_tokens,
-            "completion_tokens": response.usage.completion_tokens,
-            "total_tokens": response.usage.total_tokens,
-        }
+        usage_info = _mk_usage(getattr(resp, "usage", None))
         
         # 대화 턴 계산 (user + assistant 메시지 쌍)
         turn_count = sum(1 for msg in conversation if msg["role"] == "user")
         
+        # 사용량 정보 포맷팅 (선택적)
+        usage_str = ""
+        if usage_info:
+            usage_str = f"""모델: {model}
+입력 토큰: {usage_info.get('input_tokens', 0)}
+출력 토큰: {usage_info.get('output_tokens', 0)}
+총 토큰: {usage_info.get('total_tokens', 0)}"""
+        else:
+            usage_str = f"모델: {model}"
+        
         return {
             "messages": conversation,  # 전체 대화 기록
             "response": assistant_message,  # 최신 응답만
-            "usage": usage,
+            "usage": usage_str.strip(),  # 문자열로 포맷팅된 사용량
+            "usage_dict": usage_info,  # 딕셔너리 형태 사용량 (선택적)
             "model": model,
             "turn_count": turn_count,
             "total_messages": len(conversation)
         }
         
     except Exception as e:
-        return {"error": f"API 호출 실패: {str(e)}"}
+        error_msg = str(e)
+        if "model" in error_msg.lower():
+            return {
+                "error": f"❌ 모델 '{model}'을 사용할 수 없습니다.\n사용 가능한 모델:\n• 채팅: gpt-4o-mini, gpt-4o, gpt-3.5-turbo\n• 추론: o1-mini, o3-mini",
+                "messages": conversation
+            }
+        return {
+            "error": f"API 호출 실패: {error_msg}",
+            "messages": conversation
+        }
