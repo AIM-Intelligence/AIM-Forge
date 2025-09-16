@@ -155,14 +155,11 @@ export default function ProjectPanel({
         className="w-full px-3 py-2 bg-neutral-800 text-white rounded-lg hover:bg-neutral-700 transition-colors flex items-center justify-center gap-2 border border-neutral-600"
       >
         <span className="font-medium">Packages</span>
-        <svg
+        <img
+          src="/aim-red.png"
+          alt="AIM RedLab"
           className={`w-4 h-4 transition-transform duration-300 ${isPackagePanelOpen ? 'rotate-180' : 'rotate-0'}`}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
+        />
       </button>
 
       {isPackagePanelOpen && (

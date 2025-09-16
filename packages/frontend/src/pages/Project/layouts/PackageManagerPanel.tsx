@@ -148,9 +148,9 @@ export default function PackageManagerPanel({ projectId }: PackageManagerPanelPr
     }
 
     return (
-      <div className="max-h-48 overflow-y-auto divide-y divide-neutral-800">
+      <div className="max-h-48 overflow-y-auto divide-y divide-neutral-800 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-neutral-800 [&::-webkit-scrollbar-thumb]:bg-neutral-600 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb:hover]:bg-neutral-500">
         {packageList.map((pkg) => (
-          <div key={pkg.name} className="flex items-center justify-between py-2 text-sm">
+          <div key={pkg.name} className="flex items-center justify-between py-2 text-sm pr-2">
             <div>
               <div className="text-white font-medium">{pkg.name}</div>
               <div className="text-neutral-400 text-xs">{pkg.version}</div>
@@ -158,7 +158,7 @@ export default function PackageManagerPanel({ projectId }: PackageManagerPanelPr
             <button
               onClick={() => handleUninstall(pkg)}
               disabled={uninstalling === pkg.name || installing}
-              className="px-3 py-1 text-xs rounded border border-red-500 text-red-500 hover:bg-red-500/10 disabled:opacity-40"
+              className="px-3 py-1 text-xs rounded border border-red-500 text-red-500 hover:bg-red-500/10 disabled:opacity-40 -mr-0.5"
             >
               {uninstalling === pkg.name ? "삭제중" : "삭제"}
             </button>
@@ -187,13 +187,6 @@ export default function PackageManagerPanel({ projectId }: PackageManagerPanelPr
             className="px-3 py-2 text-sm bg-red-700 hover:bg-red-600 rounded text-white disabled:opacity-50"
           >
             {installing ? "설치중" : "설치"}
-          </button>
-          <button
-            onClick={fetchPackages}
-            disabled={isLoading || installing}
-            className="px-3 py-2 text-sm border border-neutral-600 rounded text-neutral-200 hover:bg-neutral-800 disabled:opacity-50"
-          >
-            새로고침
           </button>
         </div>
         <p className="text-xs text-neutral-500">
@@ -225,7 +218,21 @@ export default function PackageManagerPanel({ projectId }: PackageManagerPanelPr
       )}
 
       <div className="p-3">
-        <div className="text-sm font-semibold text-white mb-2">설치된 패키지</div>
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-sm font-semibold text-white">설치된 패키지</div>
+          <button
+            onClick={fetchPackages}
+            disabled={isLoading || installing}
+            className="p-2 text-sm border border-neutral-600 rounded text-neutral-200 hover:bg-neutral-800 disabled:opacity-50 flex items-center justify-center"
+            title="패키지 목록 새로고침"
+          >
+            <img
+              src="/refresh.svg"
+              alt="새로고침"
+              className="w-4 h-4"
+            />
+          </button>
+        </div>
         {renderPackages()}
       </div>
 
@@ -273,7 +280,7 @@ export default function PackageManagerPanel({ projectId }: PackageManagerPanelPr
             </button>
           </div>
           <div className="text-xs text-neutral-500 mb-2">{logState.title}</div>
-          <pre className="bg-neutral-900 border border-neutral-700 rounded p-3 text-xs text-neutral-200 max-h-64 overflow-y-auto whitespace-pre-wrap">
+          <pre className="bg-neutral-900 border border-neutral-700 rounded p-3 text-xs text-neutral-200 max-h-64 overflow-y-auto whitespace-pre-wrap [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-neutral-800 [&::-webkit-scrollbar-thumb]:bg-neutral-600 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb:hover]:bg-neutral-500">
             {logState.content}
           </pre>
         </div>
