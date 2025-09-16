@@ -225,6 +225,45 @@ export interface DeleteEdgeResponse {
   message: string;
 }
 
+// ==================== Package Management ====================
+
+export interface PackageInfo {
+  name: string;
+  version: string;
+}
+
+export interface PackageActionInfo {
+  action: string;
+  packages: string[];
+  success: boolean;
+  log_path?: string | null;
+  timestamp?: string;
+}
+
+export interface PackageMetadata {
+  updated_at?: string | null;
+  packages?: PackageInfo[];
+  last_action?: PackageActionInfo | null;
+}
+
+export interface PackageListResponse {
+  success: boolean;
+  packages: PackageInfo[];
+  metadata?: PackageMetadata;
+}
+
+export interface PackageActionResponse extends PackageListResponse {
+  stdout?: string;
+  stderr?: string;
+  log_path?: string | null;
+}
+
+export interface PackageLogResponse {
+  success: boolean;
+  log_path: string;
+  content: string;
+}
+
 // ==================== Flow Execution ====================
 
 // Execute Flow Request

@@ -7,6 +7,7 @@ import { flowControlComponents } from '../components/nodes/flow-control';
 import { paramsComponents } from '../components/nodes/params';
 import { inputsComponents } from '../components/nodes/inputs';
 import { dataopsComponents } from '../components/nodes/dataops';
+import { modelsComponents } from '../components/nodes/models';
 import { jailbreakComponents } from '../components/nodes/jailbreak';
 import { reportsComponents } from '../components/nodes/reports';
 
@@ -53,6 +54,12 @@ export const componentLibrary: ComponentCategory[] = [
     name: "Data Operations",
     icon: "🔄",
     components: dataopsComponents.map(c => ({ ...c, category: "dataops" })),
+  },
+  {
+    id: "models",
+    name: "AI Models",
+    icon: "🤖",
+    components: modelsComponents.map(c => ({ ...c, category: "models" })),
   },
   {
     id: "jailbreak",

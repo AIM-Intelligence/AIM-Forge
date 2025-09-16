@@ -121,7 +121,7 @@ async def create_node_from_template(request: CreateFromTemplateRequest):
             template_file = TEMPLATES_DIR / f"{request.template_name}.py"
         else:
             # Search in category folders
-            categories = ["flow_control", "params", "inputs", "dataops", "jailbreak", "reports"]
+            categories = ["flow_control", "params", "inputs", "dataops", "models", "jailbreak", "reports"]
             for category in categories:
                 potential_file = TEMPLATES_DIR / category / f"{request.template_name}.py"
                 if potential_file.exists():
@@ -217,7 +217,7 @@ async def get_template_code(template_name: str):
             template_file = TEMPLATES_DIR / f"{template_name}.py"
         else:
             # Search in category folders
-            categories = ["flow_control", "params", "inputs", "dataops", "jailbreak", "reports"]
+            categories = ["flow_control", "params", "inputs", "dataops", "models", "jailbreak", "reports"]
             for category in categories:
                 potential_file = TEMPLATES_DIR / category / f"{template_name}.py"
                 if potential_file.exists():

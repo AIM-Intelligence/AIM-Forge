@@ -114,7 +114,6 @@ To install packages:
 ### Core Endpoints
 - `GET /` - API information
 - `GET /api/health` - Health check
-- `POST /api/code/execute` - Execute Python code
 - `GET /api/project/` - List all projects
 - `POST /api/project/make` - Create new project
 - `POST /api/project/execute-flow` - Execute node flow

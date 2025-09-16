@@ -1,0 +1,8 @@
+# 프로젝트 가상환경 생성 시 기본 설치 패키지 목록
+# 템플릿 노드들이 바로 활용할 수 있도록 필수 데이터/HTTP 유틸을 포함합니다.
+requests==2.32.3
+python-dotenv==1.0.1
+numpy==2.3.0
+pandas==2.3.2
+scikit-learn==1.7.1
+openpyxl==3.1.5

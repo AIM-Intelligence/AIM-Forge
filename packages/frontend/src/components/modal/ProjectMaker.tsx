@@ -151,7 +151,7 @@ export default function ProjectMaker({ isOpen, onClose }: ProjectMakerProps) {
               {isLoading ? (
                 <span className="flex items-center justify-center">
                   <svg
-                    className="animate-spin h-5 w-5 mr-2"
+                    className="animate-spin-reverse h-5 w-5 mr-2"
                     viewBox="0 0 24 24"
                   >
                     <circle

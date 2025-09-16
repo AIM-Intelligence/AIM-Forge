@@ -268,6 +268,7 @@ export default function Project() {
         onInit={(instance) => { reactFlowInstanceRef.current = instance; }}
       >
         <ProjectPanel
+          projectId={projectId!}
           projectTitle={projectTitle}
           nodeCount={(() => {
             const filtered = nodes.filter(node => {

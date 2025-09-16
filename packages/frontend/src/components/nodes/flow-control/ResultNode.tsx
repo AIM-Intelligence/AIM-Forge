@@ -36,7 +36,12 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
   const [dimensions, setDimensions] = useState({ width: 300, height: 200 });
   const [isResizing, setIsResizing] = useState(false);
   const [userText, setUserText] = useState<string>("");
+  const [isFocused, setIsFocused] = useState(false);
+  const [hasScrollbar, setHasScrollbar] = useState(false);
+  const [hasError, setHasError] = useState(false);
+  const [errorType, setErrorType] = useState<'primary' | 'skipped' | null>(null);
   const nodeRef = useRef<HTMLDivElement>(null);
+  const textRef = useRef<HTMLTextAreaElement>(null);
   const didInitCache = useRef(false);
   const { projectId } = useParams<{ projectId: string }>();
   const { getZoom } = useReactFlow();
@@ -122,14 +127,100 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
   useEffect(() => {
     // If this node is executing and has no result (was cleared), clear the display
     // This happens when StartNode clears output Result nodes but preserves input Result nodes
-    if (isMyPipelineExecuting && nodeExecutionResult === undefined && userText.length > 0) {
+    if (isMyPipelineExecuting && nodeExecutionResult === undefined) {
       setUserText("");
+      setHasError(false);  // Reset error state for clean execution
+      setErrorType(null);  // Clear error type so "Executing..." shows in green
     }
   }, [isMyPipelineExecuting, nodeExecutionResult]);
+
+  // ✅ Reset error colors when execution starts
+  useEffect(() => {
+    if (isMyPipelineExecuting) {
+      setHasError(false);
+      setErrorType(null);
+    }
+  }, [isMyPipelineExecuting]);
 
   // ✅ Update when real-time execution result arrives
   useEffect(() => {
     if (!nodeExecutionResult) return;
+    
+    // Check if this is an error result
+    if (nodeExecutionResult.status === 'error') {
+      // Check error type from backend
+      const errorInfo = nodeExecutionResult.output as any;
+      if (errorInfo && errorInfo._error) {
+        if (errorInfo.error_type === 'primary') {
+          // Format primary error display with full details
+          const errorDisplay = [
+            '❌ ERROR',
+            '─'.repeat(50),
+            '',
+            '💡 Error Message:',
+            nodeExecutionResult.error || errorInfo.error || 'Unknown error',
+            '',
+            '📋 Full Traceback:',
+            '─'.repeat(50),
+            nodeExecutionResult.logs || errorInfo.logs || 'No traceback available',
+          ].join('\n');
+          // Set all states together to avoid flicker
+          setHasError(true);
+          setErrorType('primary');
+          setUserText(errorDisplay);
+        } else {
+          // This should not happen with the new logic, but handle just in case
+          setHasError(true);
+          setErrorType('primary');
+          setUserText('Error: ' + (nodeExecutionResult.error || 'Unknown error'));
+        }
+      } else {
+        // Fallback for non-structured errors
+        const errorDisplay = [
+          '❌ ERROR',
+          '─'.repeat(50),
+          '',
+          '💡 Error Message:',
+          nodeExecutionResult.error || 'Unknown error',
+          '',
+          '📋 Full Traceback:',
+          '─'.repeat(50),
+          nodeExecutionResult.logs || 'No traceback available',
+        ].join('\n');
+        // Set all states together
+        setHasError(true);
+        setErrorType('primary');
+        setUserText(errorDisplay);
+      }
+      
+      // Clear stored value on error
+      clearNodeValue(props.id);
+      return;
+    }
+    
+    // Check if this node was skipped
+    if (nodeExecutionResult.status === 'skipped') {
+      // Format skipped display
+      const skippedDisplay = [
+        '⏭️ SKIPPED',
+        '─'.repeat(50),
+        '',
+        nodeExecutionResult.error || 'Execution stopped due to upstream error',
+      ].join('\n');
+      
+      // Set all states together to avoid flicker
+      setHasError(true);
+      setErrorType('skipped');
+      setUserText(skippedDisplay);
+      
+      // Clear stored value when skipped
+      clearNodeValue(props.id);
+      return;
+    }
+    
+    // Success case - reset error state
+    setHasError(false);
+    setErrorType(null);
     
     // Extract the actual value from execution result
     let actualValue = nodeExecutionResult.output;
@@ -158,7 +249,67 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
     
     // Update node value store for data flow
     setNodeValue(props.id, actualValue);
-  }, [nodeExecutionResult, formatPreview, setNodeValue, props.id]);
+  }, [nodeExecutionResult, formatPreview, setNodeValue, clearNodeValue, props.id]);
+
+  // Monitor scrollbar changes with ResizeObserver
+  useEffect(() => {
+    if (!textRef.current) return;
+    
+    const checkScrollbar = () => {
+      const el = textRef.current;
+      if (el) {
+        const newHasScrollbar = el.scrollHeight > el.clientHeight;
+        setHasScrollbar(newHasScrollbar);
+      }
+    };
+    
+    // Initial check
+    checkScrollbar();
+    
+    // Set up ResizeObserver to monitor changes
+    const resizeObserver = new ResizeObserver(checkScrollbar);
+    resizeObserver.observe(textRef.current);
+    
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [userText]); // Re-setup when text changes
+  
+  // Handle focus for scrolling
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isFocused) {
+        setIsFocused(false);
+        console.log('Focus deactivated via ESC');
+      }
+    };
+    
+    const handleClickOutside = (e: MouseEvent) => {
+      if (isFocused && nodeRef.current && !nodeRef.current.contains(e.target as HTMLElement)) {
+        setIsFocused(false);
+        console.log('Focus deactivated via outside click');
+      }
+    };
+    
+    // Handle global focus events - only one ResultNode can be focused at a time
+    const handleGlobalFocus = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail.nodeId !== props.id && isFocused) {
+        setIsFocused(false);
+        console.log('Focus deactivated by another ResultNode');
+      }
+    };
+    
+    document.addEventListener('keydown', handleEscape);
+    document.addEventListener('mousedown', handleClickOutside);
+    window.addEventListener('resultNodeFocus', handleGlobalFocus);
+    
+    return () => {
+      document.removeEventListener('keydown', handleEscape);
+      document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('resultNodeFocus', handleGlobalFocus);
+    };
+  }, [isFocused, props.id]);
 
   // Handle node deletion
   const handleDelete = (e: React.MouseEvent) => {
@@ -311,9 +462,16 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
       <div
         ref={nodeRef}
         className={clsx(
-          "bg-neutral-900 rounded-lg border border-neutral-600 relative",
-          "select-none",
-          hovering && !isResizing && "border-neutral-400",
+          "bg-neutral-900 rounded-lg border relative select-none",
+          // Focus states
+          isFocused && !hasError && "border-green-500",
+          isFocused && hasError && errorType === 'primary' && "border-red-500",
+          isFocused && hasError && errorType === 'skipped' && "border-gray-400",
+          // Default unfocused (all types)
+          !isFocused && "border-neutral-600",
+          // Hover state
+          hovering && !isResizing && !isFocused && "border-neutral-400",
+          // Resize state
           isResizing && "shadow-xl border-blue-500"
         )}
         style={{
@@ -324,48 +482,95 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
         onMouseLeave={() => setHovering(false)}
       >
         {/* Inner container with overflow control */}
-        <div className="flex flex-col h-full overflow-hidden rounded-lg">
-          {/* Delete button */}
+        <div className="flex flex-col h-full overflow-hidden rounded-lg relative">
+          {/* Top buttons - Delete and Download */}
           {hovering && (
-            <button
-              onClick={handleDelete}
-              className="absolute top-2 right-2 w-5 h-5 bg-red-500/80 text-white rounded flex items-center justify-center text-xs hover:bg-red-600 transition-colors z-10"
-            >
-              ✕
-            </button>
+            <>
+              {/* Download button */}
+              {userText && (
+                <button
+                  onClick={handleGetResult}
+                  className={clsx(
+                    "absolute top-2 w-5 h-5 bg-neutral-600/80 text-white rounded flex items-center justify-center text-xs hover:bg-green-600 transition-colors z-10",
+                    hasScrollbar ? "right-10" : "right-8"
+                  )}
+                  title="Download"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                    className="w-3 h-3"
+                  >
+                    <path d="M10.75 2.75a.75.75 0 00-1.5 0v8.614L6.295 8.235a.75.75 0 10-1.09 1.03l4.25 4.5a.75.75 0 001.09 0l4.25-4.5a.75.75 0 00-1.09-1.03l-2.955 3.129V2.75z" />
+                    <path d="M3.5 12.75a.75.75 0 00-1.5 0v2.5A2.75 2.75 0 004.75 18h10.5A2.75 2.75 0 0018 15.25v-2.5a.75.75 0 00-1.5 0v2.5c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-2.5z" />
+                  </svg>
+                </button>
+              )}
+              
+              {/* Delete button */}
+              <button
+                onClick={handleDelete}
+                className={clsx(
+                  "absolute top-2 w-5 h-5 bg-red-500/80 text-white rounded flex items-center justify-center text-xs hover:bg-red-600 transition-colors z-10",
+                  hasScrollbar ? "right-3.5" : "right-2"
+                )}
+              >
+                ✕
+              </button>
+            </>
+          )}
+
+          {/* Focus overlay - when not focused and has content (text or error) */}
+          {!isFocused && (userText || hasError) && (
+            <div
+              className="absolute inset-0 z-[5] cursor-pointer"
+              onClick={(e) => {
+                e.stopPropagation();
+                window.dispatchEvent(new CustomEvent('resultNodeFocus', { 
+                  detail: { nodeId: props.id } 
+                }));
+                setIsFocused(true);
+                console.log('Focus activated on ResultNode:', props.id);
+              }}
+            />
           )}
 
           {/* Read-only text area */}
           <textarea
-            className="flex-1 p-3 bg-transparent text-sm text-green-400 font-mono resize-none outline-none nopan cursor-default"
+            ref={textRef}
+            className={clsx(
+              "flex-1 p-3 bg-transparent text-sm font-mono resize-none outline-none overscroll-contain",
+              // Color based on text content, not state
+              userText?.startsWith('❌ ERROR') && "text-red-400",
+              userText?.startsWith('⏭️ SKIPPED') && "text-gray-400",
+              (!userText || userText === "" || (!userText.startsWith('❌') && !userText.startsWith('⏭️'))) && "text-green-400",
+              // Force green color for placeholder during execution
+              isMyPipelineExecuting && !userText && "!text-green-400 placeholder:!text-green-400",
+              // Pointer events control based on focus
+              isFocused ? "pointer-events-auto" : "pointer-events-none",
+              !isFocused && "select-none",
+              // Custom scrollbar styling
+              "[&::-webkit-scrollbar]:w-2",
+              "[&::-webkit-scrollbar-track]:bg-neutral-800",
+              "[&::-webkit-scrollbar-thumb]:bg-neutral-600",
+              "[&::-webkit-scrollbar-thumb]:rounded-full",
+              "[&::-webkit-scrollbar-thumb:hover]:bg-neutral-500",
+              // Apply blocking classes when focused (nodrag always, nowheel only when scrollable)
+              isFocused && (hasScrollbar ? "nowheel nodrag" : "nodrag"),
+              // Always show scrollbar when content overflows
+              "overflow-y-auto"
+            )}
             value={userText}
             readOnly
             placeholder={isMyPipelineExecuting ? "Executing..." : "Run the flow to see results..."}
-            onMouseDown={(e) => {
-              if (e.button === 0) {  // Only block left click (0)
-                e.stopPropagation();
-              }
-            }}
-            onWheel={(e) => {
-              // Only stop propagation if textarea has scroll
-              const hasScroll = e.currentTarget.scrollHeight > e.currentTarget.clientHeight;
-              if (hasScroll && e.currentTarget === e.target) {
+            onWheelCapture={(e) => {
+              // Use capture phase to intercept before React Flow
+              if (isFocused && hasScrollbar) {
                 e.stopPropagation();
               }
             }}
           />
-
-          {/* Download button */}
-          {userText && (
-            <div className="border-t border-neutral-700 p-2">
-              <button
-                className="text-xs px-2 py-1 bg-neutral-800 text-neutral-300 hover:bg-neutral-700 hover:text-white rounded transition-colors w-full"
-                onClick={handleGetResult}
-              >
-                Download
-              </button>
-            </div>
-          )}
         </div>
 
         {/* Resize handle */}

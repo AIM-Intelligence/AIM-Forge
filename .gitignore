@@ -9,6 +9,10 @@ AIM-RedLab
 
 CLAUDE.md
 CLAUDE.local.md
+AGENTS.md
+venv_plan.md
+
+.uv-cache/
 
 check_formatted.json
 check_formatted.py

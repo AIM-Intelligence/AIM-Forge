@@ -1,10 +1,17 @@
-import subprocess
-import tempfile
 import os
+import subprocess
 import sys
-from typing import Optional
+import tempfile
+from pathlib import Path
+from typing import Dict, Optional
 
-def execute_python_code(code: str, timeout: int = 30, python_executable: Optional[str] = None, working_dir: Optional[str] = None) -> dict:
+def execute_python_code(
+    code: str,
+    timeout: int = 30,
+    python_executable: Optional[str] = None,
+    working_dir: Optional[str] = None,
+    env: Optional[Dict[str, str]] = None,
+) -> dict:
     """
     Execute Python code in a secure temporary environment
     
@@ -24,14 +31,15 @@ def execute_python_code(code: str, timeout: int = 30, python_executable: Optiona
         
         try:
             # Use provided Python executable or system default
-            python_exe = python_executable if python_executable else sys.executable
-            
+            python_exe = Path(python_executable) if python_executable else Path(sys.executable)
+
             result = subprocess.run(
-                [python_exe, temp_file_path],
+                [str(python_exe), temp_file_path],
                 capture_output=True,
                 text=True,
                 timeout=timeout,
-                cwd=working_dir  # Set working directory if provided
+                cwd=working_dir,
+                env=env,
             )
             
             return {
@@ -47,6 +55,12 @@ def execute_python_code(code: str, timeout: int = 30, python_executable: Optiona
             "output": "",
             "error": "Code execution timed out",
             "exit_code": -1
+        }
+    except FileNotFoundError:
+        return {
+            "output": "",
+            "error": f"Python 실행 파일을 찾을 수 없습니다: {python_executable}",
+            "exit_code": -1,
         }
     except Exception as e:
         return {

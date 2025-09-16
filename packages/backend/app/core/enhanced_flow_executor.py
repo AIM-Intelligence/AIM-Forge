@@ -9,23 +9,37 @@ import time
 import inspect
 import traceback
 import asyncio
-from typing import Any, Dict, Optional, List, Set, Tuple, get_type_hints, get_origin, get_args
+from typing import (
+    Any,
+    Dict,
+    Optional,
+    List,
+    Set,
+    Tuple,
+    get_type_hints,
+    get_origin,
+    get_args,
+)
 from pathlib import Path
 from collections import defaultdict, deque
 import ast
 
 from .flow_executor import FlowExecutor
 from .execute_code import execute_python_code
+from . import venv_manager
 
 
 class EnhancedFlowExecutor(FlowExecutor):
     """Enhanced Flow Executor that supports Python object passing between nodes"""
-    
+
+    # Display configuration
+    MAX_DISPLAY_LENGTH = 30000  # Maximum characters to display in Result Node
+
     def __init__(self, projects_root: str):
         super().__init__(projects_root)
         # Object store for each project - stores Python objects that can't be JSON serialized
         self.object_stores = {}  # {project_id: {ref_id: object}}
-        
+
     def _execute_node_isolated(
         self,
         project_id: str,
@@ -33,13 +47,15 @@ class EnhancedFlowExecutor(FlowExecutor):
         node_data: Dict,
         input_data: Any,
         timeout: int = 30,
-        target_handles: Optional[Dict[str, str]] = None,  # Map of source_id -> target_handle
-        result_node_values: Optional[Dict[str, Any]] = None
+        target_handles: Optional[
+            Dict[str, str]
+        ] = None,  # Map of source_id -> target_handle
+        result_node_values: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Execute node in the same process to enable object passing"""
-        
+
         node_type = node_data.get("type", "custom")
-        
+
         # Handle start nodes
         if node_type == "start":
             return {
@@ -48,32 +64,37 @@ class EnhancedFlowExecutor(FlowExecutor):
                 "execution_time_ms": 0,
                 "logs": "Start node - flow initiated",
             }
-        
+
         # Handle textInput nodes - check componentType first, then legacy title check
         component_type = node_data.get("data", {}).get("componentType", "")
         is_text_input = (
-            node_type == "textInput" or 
-            component_type == "TextInput" or
-            (node_type == "custom" and node_data.get("data", {}).get("title", "").startswith("Text Input"))
+            node_type == "textInput"
+            or component_type == "TextInput"
+            or (
+                node_type == "custom"
+                and node_data.get("data", {}).get("title", "").startswith("Text Input")
+            )
         )
-        
+
         if is_text_input:
             # TextInput nodes always use their stored value from localStorage (passed via result_node_values)
-            stored_value = result_node_values.get(node_id) if result_node_values else None
-            
+            stored_value = (
+                result_node_values.get(node_id) if result_node_values else None
+            )
+
             # Frontend sends the value directly as a string (not wrapped)
             # But if it comes as dict for some reason, unwrap it
             if isinstance(stored_value, dict):
                 # Could be {'value': actual_value} or {'display': ..., 'raw_value': ...}
-                if 'value' in stored_value:
-                    stored_value = stored_value['value']
-                elif 'raw_value' in stored_value:
-                    stored_value = stored_value['raw_value']
-                elif 'display' in stored_value:
-                    stored_value = stored_value['display']
-            
+                if "value" in stored_value:
+                    stored_value = stored_value["value"]
+                elif "raw_value" in stored_value:
+                    stored_value = stored_value["raw_value"]
+                elif "display" in stored_value:
+                    stored_value = stored_value["display"]
+
             pass  # TextInput node value stored
-            
+
             if stored_value is not None and stored_value != "":
                 # Return the stored value directly as a string (not wrapped in dict)
                 # This allows it to be used directly as parameter values
@@ -86,91 +107,121 @@ class EnhancedFlowExecutor(FlowExecutor):
             else:
                 # No stored value, return empty string
                 return {
-                    "status": "success", 
+                    "status": "success",
                     "output": "",  # Empty string, not wrapped
                     "execution_time_ms": 0,
                     "logs": "Text Input node - no stored value",
                 }
-        
+
         # Handle result nodes
         if node_type == "result":
             # Check if there's a stored value for this result node
-            stored_value = result_node_values.get(node_id)
-            
-            # Don't reuse stored value - always use current input for consistency
-            # This ensures errors are properly reflected and not masked by previous success
+            stored_value = (
+                result_node_values.get(node_id) if result_node_values else None
+            )
+
+            # Determine if we should use stored value or new input
+            # If we have new input (this Result node receives data from upstream nodes), use it
+            # If no new input but we have stored value (this Result node is being used as input), use stored value
             if input_data is not None:
-                # We have new input, this will update the stored value
+                # We have new input from upstream nodes, this will update the stored value
                 # If input is a dict with single key like {"input_18": value}, unwrap it
                 if isinstance(input_data, dict) and len(input_data) == 1:
                     key = list(input_data.keys())[0]
                     if key.startswith("input_"):
                         input_data = input_data[key]
+
+                # Check if the input is an error from upstream node
+                if isinstance(input_data, dict) and input_data.get("_error") == True:
+                    # This is an error from upstream, return it as error status
+                    return {
+                        "status": "error",
+                        "error": input_data.get(
+                            "error", "Unknown error from upstream node"
+                        ),
+                        "logs": input_data.get("logs", ""),
+                        "execution_time_ms": 0,
+                        "output": None,
+                    }
+            elif stored_value is not None:
+                # No new input, but we have a stored value from previous execution
+                # This Result node is being used as an input source
+                input_data = stored_value
             else:
-                # No stored value and no input
+                # No input and no stored value
                 input_data = ""
-            
+
             # Wrap non-JSON serializable objects as references
             input_data = self._wrap_output(project_id, node_id, input_data)
-            
+
             # Prepare both display and full data
             display_output = input_data
             full_data_ref = None
-            
+
             # Handle reference objects specially for Result nodes
             if isinstance(input_data, dict) and input_data.get("type") == "reference":
                 # Store the reference for full data access
                 full_data_ref = input_data.get("ref")
-                
+
                 # Unwrap the reference to get actual value
                 unwrapped = self._unwrap_input(project_id, input_data)
-                
+
                 # Apply size limit to prevent huge outputs
                 if isinstance(unwrapped, str):
-                    display_output = unwrapped[:1500] + ("..." if len(unwrapped) > 1500 else "")
+                    display_output = unwrapped[: self.MAX_DISPLAY_LENGTH] + (
+                        "..." if len(unwrapped) > self.MAX_DISPLAY_LENGTH else ""
+                    )
                 elif isinstance(unwrapped, (dict, list)):
                     # Convert to JSON for readable display
                     import json
+
                     try:
                         json_str = json.dumps(unwrapped, indent=2, ensure_ascii=False)
-                        display_output = json_str[:1500] + ("..." if len(json_str) > 1500 else "")
+                        display_output = json_str[: self.MAX_DISPLAY_LENGTH] + (
+                            "..." if len(json_str) > self.MAX_DISPLAY_LENGTH else ""
+                        )
                     except:
                         # Fallback to string representation
-                        display_output = str(unwrapped)[:1500]
+                        display_output = str(unwrapped)[: self.MAX_DISPLAY_LENGTH]
                 else:
-                    display_output = str(unwrapped)[:1500]
+                    display_output = str(unwrapped)[: self.MAX_DISPLAY_LENGTH]
             else:
                 # Not a reference, check if it needs truncation
-                if isinstance(input_data, str) and len(input_data) > 1500:
-                    display_output = input_data[:1500] + "..."
+                if (
+                    isinstance(input_data, str)
+                    and len(input_data) > self.MAX_DISPLAY_LENGTH
+                ):
+                    display_output = input_data[: self.MAX_DISPLAY_LENGTH] + "..."
                 elif isinstance(input_data, (dict, list)):
                     import json
+
                     try:
                         json_str = json.dumps(input_data, indent=2, ensure_ascii=False)
-                        if len(json_str) > 1500:
-                            display_output = json_str[:1500] + "..."
+                        if len(json_str) > self.MAX_DISPLAY_LENGTH:
+                            display_output = json_str[: self.MAX_DISPLAY_LENGTH] + "..."
                         else:
                             display_output = json_str
                     except:
-                        display_output = str(input_data)[:1500]
-                
+                        display_output = str(input_data)[: self.MAX_DISPLAY_LENGTH]
+
             # For ResultNode, we need to pass through the actual value
             # while also providing display information
             # The output should be the actual value (for pass-through)
             # with display metadata attached
-            
+
             # Pass through the actual input data as output
             # so it can be used by downstream nodes
             # Keep it as reference if it was wrapped
             actual_output = input_data
-            
+
             # Create display metadata for frontend
             display_metadata = {
                 "display": display_output,
                 "full_ref": full_data_ref,
-                "is_truncated": isinstance(display_output, str) and display_output.endswith("..."),
+                "is_truncated": isinstance(display_output, str)
+                and display_output.endswith("..."),
             }
-            
+
             # Store display metadata in a special key that frontend can recognize
             # but pass the actual value as the main output
             return {
@@ -180,14 +231,14 @@ class EnhancedFlowExecutor(FlowExecutor):
                 "execution_time_ms": 0,
                 "logs": "Result node - passing through data",
             }
-        
+
         # Handle custom nodes with in-process execution
         try:
             start_time = time.time()
-            
+
             # 1. Unwrap input data (convert references to actual objects)
             actual_input = self._unwrap_input(project_id, input_data)
-            
+
             # 2. If we have target handle information, restructure input for RunScript
             # Check if input_data already has handle names as keys (from multi-input scenario)
             # In that case, it's already properly structured and we don't need to restructure
@@ -195,7 +246,7 @@ class EnhancedFlowExecutor(FlowExecutor):
                 # Check if the keys are already handle names (not source IDs)
                 handle_values = set(target_handles.values())
                 input_keys = set(actual_input.keys())
-                
+
                 if input_keys == handle_values or input_keys.issubset(handle_values):
                     # Input is already structured with handle names, don't restructure
                     pass
@@ -216,157 +267,237 @@ class EnhancedFlowExecutor(FlowExecutor):
                 handle_name = list(target_handles.values())[0]
                 if handle_name:
                     actual_input = {handle_name: actual_input}
-            
+
             # 3. Execute node code in the same process
             result = self._execute_in_process(
                 project_id, node_id, node_data, actual_input
             )
-            
+
             # 4. Wrap output (store objects and return references if needed)
             wrapped_output = self._wrap_output(project_id, node_id, result)
-            
+
             execution_time_ms = round((time.time() - start_time) * 1000)
-            
+
             return {
                 "status": "success",
                 "output": wrapped_output,
                 "execution_time_ms": execution_time_ms,
                 "logs": "",
             }
-            
+
         except Exception as e:
+            error_msg = str(e)
+            full_traceback = traceback.format_exc()
+
+            # for debugging
+            # print(f"\n{'='*60}")
+            # print(f"🔴 NODE EXECUTION ERROR - Node: {node_id}")
+            # print(f"{'='*60}")
+            # print(f"Error Type: {type(e).__name__}")
+            # print(f"Error Message: {error_msg}")
+            # print(f"\nFull Traceback:")
+            # print(full_traceback)
+            # print('='*60 + '\n')
+
             return {
                 "status": "error",
-                "error": str(e),
+                "error": error_msg,
                 "execution_time_ms": 0,
-                "logs": traceback.format_exc(),
+                "logs": full_traceback,
             }
-    
+
     def _execute_in_process(
-        self,
-        project_id: str,
-        node_id: str,
-        node_data: Dict,
-        input_data: Any
+        self, project_id: str, node_id: str, node_data: Dict, input_data: Any
     ) -> Any:
         """Execute node code in the same process with a safe namespace"""
-        
-        # Add AIM-RedLab to Python path for imports
-        import sys
-        import os
-        aim_redlab_path = os.environ.get('AIM_REDLAB_PATH', '/Users/kwontaeyoun/Desktop/AIM/AIM-RedLab')
-        if os.path.exists(aim_redlab_path) and aim_redlab_path not in sys.path:
-            sys.path.insert(0, aim_redlab_path)
-        
-        # Get node file path
-        file_name = node_data.get("data", {}).get("file")
-        if not file_name:
-            title = node_data.get("data", {}).get("title", f"Node_{node_id}")
-            sanitized_title = "".join(
-                c if c.isalnum() or c == "_" else "_" for c in title
-            )
-            file_name = f"{node_id}_{sanitized_title}.py"
-        
-        file_path = self.projects_root / project_id / file_name
-        
-        if not file_path.exists():
-            raise FileNotFoundError(f"Node file '{file_name}' not found")
-        
-        # Read node code
-        with open(file_path, 'r', encoding='utf-8') as f:
-            node_code = f.read()
-        
-        # Create safe execution namespace
-        namespace = self._create_safe_namespace(input_data)
-        
-        # Execute the code
-        exec(node_code, namespace)
-        
-        # Find and execute the main function
-        result = None
-        function_found = False
-        
-        # Priority: RunScript > main > first callable
-        if 'RunScript' in namespace and callable(namespace['RunScript']):
-            result = self._call_function_with_input(namespace['RunScript'], input_data)
-            function_found = True
-        elif 'main' in namespace and callable(namespace['main']):
-            result = self._call_function_with_input(namespace['main'], input_data)
-            function_found = True
-        else:
-            # Find first callable function
-            for name, obj in namespace.items():
-                if callable(obj) and not name.startswith('_') and name not in [
-                    'json', 'sys', 'traceback', 'inspect', 'math', 'datetime',
-                    'pandas', 'pd', 'numpy', 'np'
-                ]:
-                    result = self._call_function_with_input(obj, input_data)
+
+        project_path = self.projects_root / project_id
+
+        try:
+            with venv_manager.activated(project_path):
+                # Add AIM-RedLab to Python path for imports
+                import sys
+                import os
+
+                aim_redlab_path = os.environ.get(
+                    "AIM_REDLAB_PATH", "/Users/kwontaeyoun/Desktop/AIM/AIM-RedLab"
+                )
+                if os.path.exists(aim_redlab_path) and aim_redlab_path not in sys.path:
+                    sys.path.insert(0, aim_redlab_path)
+
+                # Get node file path
+                file_name = node_data.get("data", {}).get("file")
+                if not file_name:
+                    title = node_data.get("data", {}).get("title", f"Node_{node_id}")
+                    sanitized_title = "".join(
+                        c if c.isalnum() or c == "_" else "_" for c in title
+                    )
+                    file_name = f"{node_id}_{sanitized_title}.py"
+
+                file_path = project_path / file_name
+
+                if not file_path.exists():
+                    raise FileNotFoundError(f"Node file '{file_name}' not found")
+
+                # Read node code
+                with open(file_path, "r", encoding="utf-8") as f:
+                    node_code = f.read()
+
+                # Create safe execution namespace
+                namespace = self._create_safe_namespace(input_data)
+
+                # Execute the code
+                exec(node_code, namespace)
+
+                # Find and execute the main function
+                result = None
+                function_found = False
+
+                # Priority: RunScript > main > first callable
+                if "RunScript" in namespace and callable(namespace["RunScript"]):
+                    result = self._call_function_with_input(
+                        namespace["RunScript"], input_data
+                    )
                     function_found = True
-                    break
-        
-        if not function_found:
-            raise RuntimeError("No callable function found in node")
-        
-        return result
-    
+                elif "main" in namespace and callable(namespace["main"]):
+                    result = self._call_function_with_input(
+                        namespace["main"], input_data
+                    )
+                    function_found = True
+                else:
+                    # Find first callable function
+                    for name, obj in namespace.items():
+                        if (
+                            callable(obj)
+                            and not name.startswith("_")
+                            and name
+                            not in [
+                                "json",
+                                "sys",
+                                "traceback",
+                                "inspect",
+                                "math",
+                                "datetime",
+                                "pandas",
+                                "pd",
+                                "numpy",
+                                "np",
+                            ]
+                        ):
+                            result = self._call_function_with_input(obj, input_data)
+                            function_found = True
+                            break
+
+                if not function_found:
+                    raise RuntimeError("No callable function found in node")
+
+                return result
+        except venv_manager.VenvError as exc:
+            raise RuntimeError(
+                f"Virtual environment not ready for project '{project_id}': {exc}"
+            ) from exc
+
     def _create_safe_namespace(self, input_data: Any) -> Dict:
         """Create a safe execution namespace with limited builtins"""
-        
+
         # Safe builtins - remove dangerous functions
         safe_builtins = {
-            'abs', 'all', 'any', 'bool', 'dict', 'enumerate',
-            'filter', 'float', 'int', 'len', 'list', 'map',
-            'max', 'min', 'print', 'range', 'round', 'set',
-            'sorted', 'str', 'sum', 'tuple', 'type', 'zip',
-            'isinstance', 'hasattr', 'getattr', 'setattr',
-            'repr', 'hash', 'id', 'iter', 'next', 'reversed',
-            '__build_class__', 'property', 'classmethod', 'staticmethod',
-            'super', 'object', 'Exception', 'ValueError', 'TypeError',
-            'AttributeError', 'KeyError', 'IndexError', 'RuntimeError',
-            '__import__'  # Allow importing modules within node code
+            "abs",
+            "all",
+            "any",
+            "bool",
+            "dict",
+            "enumerate",
+            "filter",
+            "float",
+            "int",
+            "len",
+            "list",
+            "map",
+            "max",
+            "min",
+            "print",
+            "range",
+            "round",
+            "set",
+            "sorted",
+            "str",
+            "sum",
+            "tuple",
+            "type",
+            "zip",
+            "isinstance",
+            "hasattr",
+            "getattr",
+            "setattr",
+            "repr",
+            "hash",
+            "id",
+            "iter",
+            "next",
+            "reversed",
+            "__build_class__",
+            "property",
+            "classmethod",
+            "staticmethod",
+            "super",
+            "object",
+            "Exception",
+            "ValueError",
+            "TypeError",
+            "AttributeError",
+            "KeyError",
+            "IndexError",
+            "RuntimeError",
+            "__import__",  # Allow importing modules within node code
         }
-        
+
         # Get the actual builtins based on how they're available
         import builtins
-        
+
         namespace = {
-            '__builtins__': {k: getattr(builtins, k) for k in safe_builtins 
-                           if hasattr(builtins, k)},
-            '__name__': '__main__',  # Required for class definitions
-            'input_data': input_data,
+            "__builtins__": {
+                k: getattr(builtins, k) for k in safe_builtins if hasattr(builtins, k)
+            },
+            "__name__": "__main__",  # Required for class definitions
+            "input_data": input_data,
             # Standard libraries
-            'json': __import__('json'),
-            'math': __import__('math'),
-            'datetime': __import__('datetime'),
-            'time': __import__('time'),
-            'random': __import__('random'),
-            're': __import__('re'),
-            'collections': __import__('collections'),
-            'itertools': __import__('itertools'),
-            'Path': __import__('pathlib').Path,  # Add Path for file operations
-            'pathlib': __import__('pathlib'),
-            'os': __import__('os'),
-            'sys': __import__('sys'),
-            'asyncio': __import__('asyncio'),
-            'tempfile': __import__('tempfile'),
+            "json": __import__("json"),
+            "math": __import__("math"),
+            "datetime": __import__("datetime"),
+            "time": __import__("time"),
+            "random": __import__("random"),
+            "re": __import__("re"),
+            "collections": __import__("collections"),
+            "itertools": __import__("itertools"),
+            "Path": __import__("pathlib").Path,  # Add Path for file operations
+            "pathlib": __import__("pathlib"),
+            "os": __import__("os"),
+            "sys": __import__("sys"),
+            "asyncio": __import__("asyncio"),
+            "tempfile": __import__("tempfile"),
+            # AI model libraries
+            # "openai": __import__("openai"),
+            # "anthropic": __import__("anthropic"),
+            # "together": __import__("together"),
         }
-        
+
         # Don't import pandas/numpy here - let nodes import them if needed
         # This avoids import errors affecting all nodes
-        
+
         return namespace
-    
+
     def _call_function_with_input(self, func: callable, input_data: Any) -> Any:
         """Call a function with appropriate input handling for RunScript pattern"""
-        
+
         try:
             sig = inspect.signature(func)
             params = list(sig.parameters.keys())
-            
+
             # No parameters - call without arguments
             if len(params) == 0:
                 return func()
-            
+
             # Special handling for RunScript pattern
             if func.__name__ == "RunScript":
                 # RunScript always uses keyword arguments from input_data dict
@@ -383,7 +514,7 @@ class EnhancedFlowExecutor(FlowExecutor):
                         else:
                             # Required parameter missing - skip it to use Python's default behavior
                             pass
-                    
+
                     return func(**kwargs)
                 else:
                     # If input is not a dict, try to pass as first parameter only
@@ -392,7 +523,7 @@ class EnhancedFlowExecutor(FlowExecutor):
                         return func(**{first_param: input_data})
                     else:
                         return func()
-            
+
             # For non-RunScript functions, use original logic
             # If input is a dict and function expects multiple parameters
             if isinstance(input_data, dict) and len(params) > 1:
@@ -401,50 +532,52 @@ class EnhancedFlowExecutor(FlowExecutor):
                 for param_name in params:
                     if param_name in input_data:
                         kwargs[param_name] = input_data[param_name]
-                    elif sig.parameters[param_name].default is not inspect.Parameter.empty:
+                    elif (
+                        sig.parameters[param_name].default
+                        is not inspect.Parameter.empty
+                    ):
                         # Use default value if available
                         pass
                     else:
                         # Required parameter missing, fall back to single argument
                         return func(input_data)
                 return func(**kwargs)
-            
+
             # Single parameter or non-dict input
             if input_data is not None:
                 return func(input_data)
             else:
                 return func()
-                
+
         except TypeError as e:
-            # Handle parameter mismatch errors
+            # Handle parameter mismatch errors only
+            # Don't retry for RunScript functions - they should always use kwargs
+            if func.__name__ == "RunScript":
+                raise
+
             if "missing" in str(e) and "required positional argument" in str(e):
                 # Try calling with no arguments if it's expecting nothing
                 try:
                     return func()
                 except:
                     pass
-            
+
             # Fallback: try calling with input_data or without
             if input_data is not None:
                 return func(input_data)
             else:
                 return func()
         except Exception:
-            # Final fallback
-            if input_data is not None:
-                try:
-                    return func(input_data)
-                except:
-                    return func()
-            else:
-                return func()
-    
+            # For any other exception (ZeroDivisionError, ValueError, etc.)
+            # Don't retry - just raise the original exception
+            raise
+
     def _unwrap_input(self, project_id: str, data: Any) -> Any:
         """Convert references to actual objects from the object store"""
-        
+
         if data is None:
             return None
-        
+
         # Handle reference objects
         if isinstance(data, dict):
             # Check if this is a reference object
@@ -457,27 +590,27 @@ class EnhancedFlowExecutor(FlowExecutor):
                         # Reference not found - return preview if available
                         return data.get("preview", None)
                 return None
-            
+
             # Recursively unwrap dict values
             unwrapped = {}
             for key, value in data.items():
                 unwrapped[key] = self._unwrap_input(project_id, value)
             return unwrapped
-        
+
         # Handle lists
         if isinstance(data, list):
             return [self._unwrap_input(project_id, item) for item in data]
-        
+
         # Return as-is for primitive types
         return data
-    
+
     def _wrap_output(self, project_id: str, node_id: str, data: Any) -> Any:
         """Wrap output data - use JSON for small data, references for large/complex objects"""
-        
+
         # Primitive types pass through directly
         if data is None or isinstance(data, (bool, int, float, str)):
             return data
-        
+
         # Try JSON serialization for small data
         try:
             json_str = json.dumps(data)
@@ -487,51 +620,51 @@ class EnhancedFlowExecutor(FlowExecutor):
         except (TypeError, ValueError):
             # Not JSON serializable, need to use reference
             pass
-        
+
         # Store as reference for large or complex objects
         return self._store_as_reference(project_id, node_id, data)
-    
+
     def _store_as_reference(self, project_id: str, node_id: str, data: Any) -> Dict:
         """Store an object and return a reference"""
-        
+
         # Initialize project store if needed
         if project_id not in self.object_stores:
             self.object_stores[project_id] = {}
-        
+
         # Generate unique reference ID
         ref_id = f"{node_id}_{int(time.time() * 1000)}"
-        
+
         # Store the object
         self.object_stores[project_id][ref_id] = data
-        
+
         # Return reference with metadata
         return {
             "type": "reference",
             "ref": ref_id,
             "preview": self._generate_preview(data),
             "data_type": type(data).__name__,
-            "size": sys.getsizeof(data) if hasattr(data, '__sizeof__') else None
+            "size": sys.getsizeof(data) if hasattr(data, "__sizeof__") else None,
         }
-    
+
     def _generate_preview(self, data: Any) -> str:
         """Generate a human-readable preview of the data"""
-        
+
         try:
             # pandas DataFrame
-            if hasattr(data, 'shape') and hasattr(data, 'columns'):
+            if hasattr(data, "shape") and hasattr(data, "columns"):
                 return f"DataFrame: {data.shape[0]} rows × {data.shape[1]} cols"
-            
+
             # numpy array
-            elif hasattr(data, 'shape') and hasattr(data, 'ndim'):
+            elif hasattr(data, "shape") and hasattr(data, "ndim"):
                 return f"Array: shape={data.shape}, dtype={data.dtype}"
-            
+
             # List or tuple
             elif isinstance(data, (list, tuple)):
                 preview = f"{type(data).__name__} with {len(data)} items"
                 if len(data) > 0:
                     preview += f" (first: {str(data[0])[:50]})"
                 return preview
-            
+
             # Dictionary
             elif isinstance(data, dict):
                 keys = list(data.keys())[:3]
@@ -539,41 +672,41 @@ class EnhancedFlowExecutor(FlowExecutor):
                 if keys:
                     preview += f" ({', '.join(str(k) for k in keys)}{'...' if len(data) > 3 else ''})"
                 return preview
-            
+
             # Set
             elif isinstance(data, set):
                 return f"Set with {len(data)} items"
-            
+
             # Custom objects
-            elif hasattr(data, '__class__'):
+            elif hasattr(data, "__class__"):
                 class_name = data.__class__.__name__
                 # Try to get a meaningful representation
-                if hasattr(data, '__len__'):
+                if hasattr(data, "__len__"):
                     return f"{class_name} ({len(data)} items)"
-                elif hasattr(data, '__str__'):
+                elif hasattr(data, "__str__"):
                     str_repr = str(data)[:100]
                     return f"{class_name}: {str_repr}{'...' if len(str(data)) > 100 else ''}"
                 else:
                     return f"{class_name} object"
-            
+
             # Default: string representation
             else:
                 preview = str(data)[:100]
                 if len(str(data)) > 100:
                     preview += "..."
                 return preview
-                
+
         except Exception as e:
             return f"{type(data).__name__} object (preview error: {str(e)[:50]})"
-    
+
     def cleanup_project_store(self, project_id: str):
         """Clean up object store for a project"""
-        
+
         if project_id in self.object_stores:
             # Clear all references for this project
             self.object_stores[project_id].clear()
             del self.object_stores[project_id]
-    
+
     def _extract_reachable_subgraph(
         self, start_id: str, nodes: Dict[str, Dict], edges: List[Dict]
     ) -> Tuple[Set[str], Dict[str, List[Tuple[str, Optional[str]]]]]:
@@ -581,7 +714,7 @@ class EnhancedFlowExecutor(FlowExecutor):
         # Build adjacency list
         adjacency = defaultdict(list)
         reverse_adjacency = defaultdict(set)  # Track who provides input to whom
-        
+
         for edge in edges:
             source = edge.get("source")
             target = edge.get("target")
@@ -605,7 +738,7 @@ class EnhancedFlowExecutor(FlowExecutor):
             for target, _ in adjacency[current]:
                 if target not in reachable:
                     queue.append(target)
-            
+
             # IMPORTANT: Also add nodes that provide input to the current node
             # This ensures nodes like 7 and 8 that feed into node 6 are included
             for source in reverse_adjacency[current]:
@@ -613,7 +746,7 @@ class EnhancedFlowExecutor(FlowExecutor):
                     queue.append(source)
 
         return reachable, adjacency
-    
+
     async def execute_flow(
         self,
         project_id: str,
@@ -625,45 +758,45 @@ class EnhancedFlowExecutor(FlowExecutor):
         halt_on_error: bool = True,
     ) -> Dict[str, Any]:
         """Execute the complete flow with targetHandle support"""
-        
+
         # Load project structure
         nodes, edges = self._load_structure(project_id)
-        
+
         # Find start node
         if not start_node_id:
             start_node_id = self._find_start_node(nodes)
             if not start_node_id:
                 raise ValueError("No start node found in project")
-        
+
         if start_node_id not in nodes:
             raise ValueError(f"Start node {start_node_id} not found")
-        
+
         # Extract reachable subgraph
         reachable_nodes, adjacency = self._extract_reachable_subgraph(
             start_node_id, nodes, edges
         )
-        
+
         # Perform topological sort
         execution_order = self._topological_sort(reachable_nodes, adjacency)
-        
+
         # Initialize execution state
         execution_results = {}
         node_outputs = {}
         node_inputs = defaultdict(dict)
-        
+
         # Calculate dependencies
         dependencies = defaultdict(set)
         for edge in edges:
             if edge["source"] in reachable_nodes and edge["target"] in reachable_nodes:
                 dependencies[edge["target"]].add(edge["source"])
-        
+
         # Set initial params for start node
         if params:
             node_inputs[start_node_id] = params
-        
+
         # Execution semaphore for parallel control
         semaphore = asyncio.Semaphore(max_workers)
-        
+
         async def execute_node_async(node_id: str):
             """Execute a single node asynchronously"""
             async with semaphore:
@@ -679,47 +812,57 @@ class EnhancedFlowExecutor(FlowExecutor):
                             "logs": "",
                         }
                         return
-                
+
                 # Prepare input data with targetHandle mapping
                 input_data = None
                 target_handles = {}
-                
+
                 # Collect inputs from edges with handle information
                 incoming_edges = [
                     {
                         "source": edge["source"],
                         "targetHandle": edge.get("targetHandle"),
-                        "sourceHandle": edge.get("sourceHandle")
+                        "sourceHandle": edge.get("sourceHandle"),
                     }
                     for edge in edges
                     if edge["target"] == node_id and edge["source"] in node_outputs
                 ]
-                
+
                 if incoming_edges:
                     # Always use dict format for consistency between single and multiple inputs
                     input_data = {}
-                    
+
                     for edge_info in incoming_edges:
                         source = edge_info["source"]
-                        
+
                         # Skip if source hasn't been executed yet
                         if source not in node_outputs:
                             continue
-                            
+
                         source_output = node_outputs[source]
-                        
+
                         # Check if source_output is a reference and unwrap it first
                         source_output_unwrapped = source_output
-                        if isinstance(source_output, dict) and source_output.get("type") == "reference":
-                            source_output_unwrapped = self._unwrap_input(project_id, source_output)
-                        
+                        if (
+                            isinstance(source_output, dict)
+                            and source_output.get("type") == "reference"
+                        ):
+                            source_output_unwrapped = self._unwrap_input(
+                                project_id, source_output
+                            )
+
                         # Extract value based on sourceHandle
                         value = source_output_unwrapped
-                        if isinstance(source_output_unwrapped, dict) and edge_info["sourceHandle"]:
+                        if (
+                            isinstance(source_output_unwrapped, dict)
+                            and edge_info["sourceHandle"]
+                        ):
                             # Extract specific output from dict
                             if edge_info["sourceHandle"] in source_output_unwrapped:
-                                value = source_output_unwrapped[edge_info["sourceHandle"]]
-                        
+                                value = source_output_unwrapped[
+                                    edge_info["sourceHandle"]
+                                ]
+
                         # Use targetHandle as key if specified
                         if edge_info["targetHandle"]:
                             input_data[edge_info["targetHandle"]] = value
@@ -739,7 +882,7 @@ class EnhancedFlowExecutor(FlowExecutor):
                 elif node_id == start_node_id and params:
                     # Start node with initial params
                     input_data = params
-                
+
                 # Execute node in thread pool (blocking operation)
                 loop = asyncio.get_event_loop()
                 result = await loop.run_in_executor(
@@ -753,16 +896,16 @@ class EnhancedFlowExecutor(FlowExecutor):
                     target_handles if target_handles else None,
                     result_node_values,
                 )
-                
+
                 execution_results[node_id] = result
-                
+
                 # Store output for downstream nodes
                 if result["status"] == "success":
                     node_outputs[node_id] = result.get("output")
-        
+
         # Execute nodes in order with parallelization
         executed = set()
-        
+
         while len(executed) < len(execution_order):
             # Find nodes ready to execute
             ready = []
@@ -771,7 +914,7 @@ class EnhancedFlowExecutor(FlowExecutor):
                     # Check if all dependencies are executed
                     if all(dep in executed for dep in dependencies[node_id]):
                         ready.append(node_id)
-            
+
             # Execute ready nodes in parallel
             if ready:
                 tasks = [execute_node_async(node_id) for node_id in ready]
@@ -780,14 +923,14 @@ class EnhancedFlowExecutor(FlowExecutor):
             else:
                 # No progress possible - might have cycle or error
                 break
-        
+
         # Collect results from result nodes
         result_nodes = {}
         for node_id in execution_results:
             if nodes[node_id].get("type") == "result":
                 if execution_results[node_id]["status"] == "success":
                     result_nodes[node_id] = execution_results[node_id]["output"]
-        
+
         return {
             "success": True,
             "run_id": f"{time.strftime('%Y-%m-%dT%H:%M:%SZ')}-{project_id}",
@@ -800,7 +943,7 @@ class EnhancedFlowExecutor(FlowExecutor):
                 if r.get("status") == "success"
             ),
         }
-    
+
     async def execute_flow_streaming(
         self,
         project_id: str,
@@ -812,65 +955,71 @@ class EnhancedFlowExecutor(FlowExecutor):
         halt_on_error: bool = True,
     ):
         """Execute flow with streaming results - yields results as nodes complete"""
-        
+
         # Load project structure
         nodes, edges = self._load_structure(project_id)
-        
+
         # Find start node
         if not start_node_id:
             start_node_id = self._find_start_node(nodes)
             if not start_node_id:
                 raise ValueError("No start node found in project")
-        
+
         # Get reachable nodes and adjacency
         reachable_nodes, adjacency = self._extract_reachable_subgraph(
             start_node_id, nodes, edges
         )
-        
+
         # Get topological order
         execution_order = self._topological_sort(reachable_nodes, adjacency)
-        
+
         # Filter execution order to only include reachable nodes
         execution_order = [node for node in execution_order if node in reachable_nodes]
-        
+
         # Initialize tracking
         start_time = time.time()
         execution_results = {}
         node_outputs = {}
         result_nodes = {}
-        
+
+        # Execution control dictionary to share state between async tasks
+        execution_control = {
+            "stopped": False,
+            "error_node_id": None,
+            "error_node_title": None,
+        }
+
         # Filter execution order to count only main processing components
         # Exclude: start nodes, result nodes, and text input nodes from progress count
         main_component_count = 0
         main_component_indices = {}  # Map node_id to its index in main components
         completed_main_components = 0  # Track completed main components
-        
+
         for node_id in execution_order:
             node = nodes.get(node_id, {})
             node_type = node.get("type", "custom")
             node_title = node.get("data", {}).get("title", "")
             component_type = node.get("data", {}).get("componentType", "")
-            
+
             # Check if this is a main processing component (exclude result, start, text input)
             is_main_component = (
-                node_type not in ["start", "result", "textInput"] and
-                component_type != "TextInput" and
-                "Text Input" not in node_title and
-                "Start Node" not in node_title and
-                "Result Node" not in node_title
+                node_type not in ["start", "result", "textInput"]
+                and component_type != "TextInput"
+                and "Text Input" not in node_title
+                and "Start Node" not in node_title
+                and "Result Node" not in node_title
             )
-            
+
             if is_main_component:
                 main_component_indices[node_id] = main_component_count
                 main_component_count += 1
-        
-        
+
         # Classify Result nodes based on incoming edges
         # Input Result nodes: no incoming edges from this pipeline (preserve values)
         # Output Result nodes: have incoming edges from this pipeline (clear values)
         input_result_nodes = []
         output_result_nodes = []
-        
+
         for node_id in reachable_nodes:
             node = nodes.get(node_id, {})
             if node.get("type") == "result":
@@ -880,13 +1029,12 @@ class EnhancedFlowExecutor(FlowExecutor):
                     if edge["target"] == node_id and edge["source"] in reachable_nodes:
                         has_incoming = True
                         break
-                
+
                 if has_incoming:
                     output_result_nodes.append(node_id)
                 else:
                     input_result_nodes.append(node_id)
-        
-        
+
         # Send initial event with classified nodes
         yield {
             "type": "start",
@@ -895,24 +1043,83 @@ class EnhancedFlowExecutor(FlowExecutor):
             "affected_nodes": list(reachable_nodes),  # All nodes in this pipeline
             "input_result_nodes": input_result_nodes,  # Result nodes to preserve
             "output_result_nodes": output_result_nodes,  # Result nodes to clear
-            "timestamp": time.time()
+            "timestamp": time.time(),
         }
-        
+
         # Calculate dependencies for each node
         dependencies = defaultdict(set)
         for edge in edges:
             if edge["source"] in reachable_nodes and edge["target"] in reachable_nodes:
                 dependencies[edge["target"]].add(edge["source"])
-        
+
         # Execute nodes with dependency-aware parallelism
-        
+
         # Track which nodes are currently executing
         executing_nodes = set()
         completed_nodes = set()
         completed_main_components = 0  # Track how many main components have completed
-        
+
+        # Track nodes directly connected to error node to allow them to receive error
+        error_downstream_nodes = set()
+
         # Process nodes in levels (nodes that can execute in parallel)
         while len(completed_nodes) < len(execution_order):
+            # Check if execution was stopped due to error
+            if execution_control["stopped"]:
+                # If this is the first check after error, identify direct downstream Result nodes only
+                if not error_downstream_nodes and execution_control["error_node_id"]:
+                    # Find Result nodes directly connected to the error node
+                    for edge in edges:
+                        if edge["source"] == execution_control["error_node_id"]:
+                            target_node = nodes.get(edge["target"], {})
+                            # Only allow Result nodes to receive error information
+                            if target_node.get("type") == "result":
+                                error_downstream_nodes.add(edge["target"])
+
+                # Allow direct downstream nodes to execute to receive the error
+                # Skip all other remaining nodes
+                for node_id in execution_order:
+                    if (
+                        node_id not in completed_nodes
+                        and node_id not in error_downstream_nodes
+                    ):
+                        node_data = nodes[node_id]
+
+                        # Create skipped result
+                        skipped_result = {
+                            "status": "skipped",
+                            "error": f"Execution stopped due to error in node: {execution_control['error_node_title']}",
+                            "execution_time_ms": 0,
+                            "logs": "",
+                            "skipped_reason": "upstream_error",
+                            "error_source": execution_control["error_node_id"],
+                        }
+
+                        execution_results[node_id] = skipped_result
+
+                        # Send skip event for main components
+                        if node_id in main_component_indices:
+                            yield {
+                                "type": "node_complete",
+                                "node_id": node_id,
+                                "node_title": node_data.get("data", {}).get(
+                                    "title", "Unknown"
+                                ),
+                                "node_index": main_component_indices[node_id] + 1,
+                                "total_nodes": main_component_count,
+                                "result": skipped_result,
+                                "timestamp": time.time(),
+                            }
+
+                        completed_nodes.add(node_id)
+
+                # If no direct downstream nodes remain, break
+                if not any(
+                    node in error_downstream_nodes and node not in completed_nodes
+                    for node in execution_order
+                ):
+                    break
+
             # Find nodes that can execute now (dependencies satisfied)
             ready_nodes = []
             for node_id in execution_order:
@@ -920,57 +1127,70 @@ class EnhancedFlowExecutor(FlowExecutor):
                     # Check if all dependencies are completed
                     if dependencies[node_id].issubset(completed_nodes):
                         ready_nodes.append(node_id)
-            
+
             if not ready_nodes:
                 # Wait a bit if no nodes are ready
                 await asyncio.sleep(0.01)
                 continue
-            
+
             # Execute ready nodes in parallel
             tasks = []
             task_to_node = {}  # Map task to node_id for tracking
-            
+
             for node_id in ready_nodes:
                 executing_nodes.add(node_id)
                 node_data = nodes[node_id]
-                
+
                 # Create async task for this node
                 # Get the main component index for this node (or -1 if not a main component)
                 main_index = main_component_indices.get(node_id, -1)
-                
-                task = asyncio.create_task(self._execute_node_streaming(
-                    project_id, node_id, node_data, nodes, edges, 
-                    node_outputs, execution_results, result_nodes,
-                    result_node_values, main_index, main_component_count,
-                    completed_main_components,
-                    start_node_id, params, timeout_sec, halt_on_error
-                ))
+
+                task = asyncio.create_task(
+                    self._execute_node_streaming(
+                        project_id,
+                        node_id,
+                        node_data,
+                        nodes,
+                        edges,
+                        node_outputs,
+                        execution_results,
+                        result_nodes,
+                        result_node_values,
+                        main_index,
+                        main_component_count,
+                        completed_main_components,
+                        start_node_id,
+                        params,
+                        timeout_sec,
+                        halt_on_error,
+                        execution_control,
+                    )
+                )
                 tasks.append(task)
                 task_to_node[task] = node_id
-            
+
             # Wait for all tasks to complete and yield results as they finish
             pending_tasks = set(tasks)
             while pending_tasks:
                 # Wait for at least one task to complete
                 done, pending_tasks = await asyncio.wait(
-                    pending_tasks, 
-                    return_when=asyncio.FIRST_COMPLETED
+                    pending_tasks, return_when=asyncio.FIRST_COMPLETED
                 )
-                
+
                 # Process completed tasks
                 for completed_task in done:
                     result = await completed_task
                     node_id = task_to_node[completed_task]
-                    
+
                     if result:
                         yield result
                         # Track completed main components for accurate progress
                         if node_id in main_component_indices:
                             completed_main_components += 1
-                    
+
                     executing_nodes.remove(node_id)
                     completed_nodes.add(node_id)
-        
+
         # Send complete event
         yield {
             "type": "complete",
@@ -978,11 +1198,11 @@ class EnhancedFlowExecutor(FlowExecutor):
             "result_nodes": result_nodes,
             "execution_order": execution_order,
             "total_execution_time_ms": round((time.time() - start_time) * 1000),
-            "timestamp": time.time()
+            "timestamp": time.time(),
         }
-        
+
         return
-    
+
     async def _execute_node_streaming(
         self,
         project_id: str,
@@ -1000,50 +1220,59 @@ class EnhancedFlowExecutor(FlowExecutor):
         start_node_id: str,
         params: Optional[Dict] = None,
         timeout_sec: int = 30,
-        halt_on_error: bool = True
+        halt_on_error: bool = True,
+        execution_control: Optional[Dict] = None,  # Controls execution flow
     ):
         """Execute a single node and return streaming result"""
         try:
             # Prepare input data
             input_data = None
             target_handles = {}
-            
+
             # Collect inputs from edges
             incoming_edges = [
                 {
                     "source": edge["source"],
                     "targetHandle": edge.get("targetHandle"),
-                    "sourceHandle": edge.get("sourceHandle")
+                    "sourceHandle": edge.get("sourceHandle"),
                 }
                 for edge in edges
                 if edge["target"] == node_id and edge["source"] in node_outputs
             ]
-            
+
             if incoming_edges:
                 # Always use dict format for consistency between single and multiple inputs
                 input_data = {}
-                
+
                 for edge_info in incoming_edges:
                     source = edge_info["source"]
-                    
+
                     # Skip if source hasn't been executed yet
                     if source not in node_outputs:
                         continue
-                        
+
                     source_output = node_outputs[source]
-                    
+
                     # Check if source_output is a reference and unwrap it first
                     source_output_unwrapped = source_output
-                    if isinstance(source_output, dict) and source_output.get("type") == "reference":
-                        source_output_unwrapped = self._unwrap_input(project_id, source_output)
-                    
+                    if (
+                        isinstance(source_output, dict)
+                        and source_output.get("type") == "reference"
+                    ):
+                        source_output_unwrapped = self._unwrap_input(
+                            project_id, source_output
+                        )
+
                     # Extract value based on sourceHandle
                     value = source_output_unwrapped
-                    if isinstance(source_output_unwrapped, dict) and edge_info["sourceHandle"]:
+                    if (
+                        isinstance(source_output_unwrapped, dict)
+                        and edge_info["sourceHandle"]
+                    ):
                         # Extract specific output from dict
                         if edge_info["sourceHandle"] in source_output_unwrapped:
                             value = source_output_unwrapped[edge_info["sourceHandle"]]
-                    
+
                     # Use targetHandle as key if specified
                     if edge_info["targetHandle"]:
                         input_data[edge_info["targetHandle"]] = value
@@ -1061,7 +1290,7 @@ class EnhancedFlowExecutor(FlowExecutor):
                             input_data[f"input_{source}"] = value
             elif node_id == start_node_id and params:
                 input_data = params
-            
+
             # Execute node
             loop = asyncio.get_event_loop()
             result = await loop.run_in_executor(
@@ -1075,17 +1304,35 @@ class EnhancedFlowExecutor(FlowExecutor):
                 target_handles if target_handles else None,
                 result_node_values,
             )
-            
+
             execution_results[node_id] = result
-            
+
             # Store output for downstream nodes
             if result["status"] == "success":
                 node_outputs[node_id] = result.get("output")
-                
+
                 # Handle result nodes
                 if node_data.get("type") == "result":
                     result_nodes[node_id] = result.get("output")
-            
+            elif result["status"] == "error":
+                # Mark as primary error and stop execution
+                node_outputs[node_id] = {
+                    "_error": True,
+                    "error_type": "primary",
+                    "status": "error",
+                    "error": result.get("error"),
+                    "logs": result.get("logs"),
+                    "node_id": node_id,
+                }
+
+                # Set flag to stop execution if execution_control is provided
+                if execution_control:
+                    execution_control["stopped"] = True
+                    execution_control["error_node_id"] = node_id
+                    execution_control["error_node_title"] = node_data.get(
+                        "data", {}
+                    ).get("title", "Unknown")
+
             # Return node completion event
             # Send updates for all nodes including Result nodes for real-time updates
             # Only exclude Start and TextInput nodes from progress updates
@@ -1099,7 +1346,7 @@ class EnhancedFlowExecutor(FlowExecutor):
                     "node_index": completed_main_components,  # Use current progress
                     "total_nodes": total_main_components,
                     "result": result,
-                    "timestamp": time.time()
+                    "timestamp": time.time(),
                 }
             elif main_component_index >= 0:
                 # For main components, use their actual index
@@ -1110,22 +1357,22 @@ class EnhancedFlowExecutor(FlowExecutor):
                     "node_index": main_component_index + 1,  # 1-based index for display
                     "total_nodes": total_main_components,
                     "result": result,
-                    "timestamp": time.time()
+                    "timestamp": time.time(),
                 }
             else:
                 # For auxiliary nodes (start, text input), don't send progress update
                 return None
-            
+
         except Exception as e:
             # Return error event
             error_result = {
                 "status": "error",
                 "error": str(e),
                 "execution_time_ms": 0,
-                "logs": ""
+                "logs": "",
             }
             execution_results[node_id] = error_result
-            
+
             # Only send error events for main components
             if main_component_index >= 0:
                 return {
@@ -1135,17 +1382,17 @@ class EnhancedFlowExecutor(FlowExecutor):
                     "node_index": main_component_index + 1,
                     "total_nodes": total_main_components,
                     "result": error_result,
-                    "timestamp": time.time()
+                    "timestamp": time.time(),
                 }
             else:
                 return None
-    
+
     def get_store_info(self, project_id: str) -> Dict:
         """Get information about the object store for debugging"""
-        
+
         if project_id not in self.object_stores:
             return {"exists": False, "count": 0, "refs": []}
-        
+
         store = self.object_stores[project_id]
         return {
             "exists": True,
@@ -1154,15 +1401,17 @@ class EnhancedFlowExecutor(FlowExecutor):
                 {
                     "ref": ref,
                     "type": type(obj).__name__,
-                    "size": sys.getsizeof(obj) if hasattr(obj, '__sizeof__') else None
+                    "size": sys.getsizeof(obj) if hasattr(obj, "__sizeof__") else None,
                 }
                 for ref, obj in store.items()
-            ]
+            ],
         }
-    
-    def analyze_node_signature(self, project_id: str, node_id: str, node_data: Dict) -> Dict:
+
+    def analyze_node_signature(
+        self, project_id: str, node_id: str, node_data: Dict
+    ) -> Dict:
         """Analyze a node's RunScript function signature for metadata"""
-        
+
         try:
             # Get node file path
             file_name = node_data.get("data", {}).get("file")
@@ -1172,21 +1421,21 @@ class EnhancedFlowExecutor(FlowExecutor):
                     c if c.isalnum() or c == "_" else "_" for c in title
                 )
                 file_name = f"{node_id}_{sanitized_title}.py"
-            
+
             file_path = self.projects_root / project_id / file_name
-            
+
             if not file_path.exists():
                 return {
                     "mode": "unknown",
                     "inputs": [],
                     "outputs": [],
-                    "error": f"Node file '{file_name}' not found"
+                    "error": f"Node file '{file_name}' not found",
                 }
-            
+
             # Read and parse the node code
-            with open(file_path, 'r', encoding='utf-8') as f:
+            with open(file_path, "r", encoding="utf-8") as f:
                 node_code = f.read()
-            
+
             # Parse the AST to find RunScript function
             try:
                 tree = ast.parse(node_code)
@@ -1195,27 +1444,27 @@ class EnhancedFlowExecutor(FlowExecutor):
                     "mode": "unknown",
                     "inputs": [],
                     "outputs": [],
-                    "error": f"Syntax error in node code: {e}"
+                    "error": f"Syntax error in node code: {e}",
                 }
-            
+
             # Find RunScript function
             runscript_node = None
             for node in ast.walk(tree):
                 if isinstance(node, ast.FunctionDef) and node.name == "RunScript":
                     runscript_node = node
                     break
-            
+
             # Determine mode and extract metadata
             if runscript_node:
                 # Python Script Mode - has RunScript function
                 inputs = self._extract_function_inputs(runscript_node, node_code)
                 outputs = self._extract_function_outputs(runscript_node, node_code)
-                
+
                 return {
                     "mode": "script",
                     "inputs": inputs,
                     "outputs": outputs,
-                    "function_name": "RunScript"
+                    "function_name": "RunScript",
                 }
             else:
                 # Check for main function as fallback
@@ -1224,73 +1473,74 @@ class EnhancedFlowExecutor(FlowExecutor):
                     if isinstance(node, ast.FunctionDef) and node.name == "main":
                         main_node = node
                         break
-                
+
                 if main_node:
                     inputs = self._extract_function_inputs(main_node, node_code)
                     outputs = self._extract_function_outputs(main_node, node_code)
-                    
+
                     return {
                         "mode": "basic",
                         "inputs": inputs,
                         "outputs": outputs,
-                        "function_name": "main"
+                        "function_name": "main",
                     }
                 else:
                     # No RunScript or main - basic mode
                     return {
                         "mode": "basic",
-                        "inputs": [{"name": "input_data", "type": "Any", "default": None}],
+                        "inputs": [
+                            {"name": "input_data", "type": "Any", "default": None}
+                        ],
                         "outputs": [{"name": "output", "type": "Any"}],
-                        "function_name": None
+                        "function_name": None,
                     }
-                    
+
         except Exception as e:
-            return {
-                "mode": "unknown",
-                "inputs": [],
-                "outputs": [],
-                "error": str(e)
-            }
-    
-    def _extract_function_inputs(self, func_node: ast.FunctionDef, source_code: str) -> List[Dict]:
+            return {"mode": "unknown", "inputs": [], "outputs": [], "error": str(e)}
+
+    def _extract_function_inputs(
+        self, func_node: ast.FunctionDef, source_code: str
+    ) -> List[Dict]:
         """Extract input parameters from a function AST node"""
-        
+
         inputs = []
         args = func_node.args
-        
+
         # Get default values (they're aligned to the right)
         defaults = args.defaults or []
         num_args = len(args.args)
         num_defaults = len(defaults)
-        
+
         for i, arg in enumerate(args.args):
             param_info = {
                 "name": arg.arg,
                 "type": "Any",  # Default type
                 "default": None,
-                "required": True
+                "required": True,
             }
-            
+
             # Check if this parameter has a default value
             default_index = i - (num_args - num_defaults)
             if default_index >= 0:
                 default_node = defaults[default_index]
                 param_info["required"] = False
                 param_info["default"] = self._extract_default_value(default_node)
-            
+
             # Extract type annotation if available
             if arg.annotation:
                 param_info["type"] = self._extract_type_annotation(arg.annotation)
-            
+
             inputs.append(param_info)
-        
+
         return inputs
-    
-    def _extract_function_outputs(self, func_node: ast.FunctionDef, source_code: str) -> List[Dict]:
+
+    def _extract_function_outputs(
+        self, func_node: ast.FunctionDef, source_code: str
+    ) -> List[Dict]:
         """Extract output keys from return statements in function"""
-        
+
         outputs = []
-        
+
         # Find all return statements
         for node in ast.walk(func_node):
             if isinstance(node, ast.Return) and node.value:
@@ -1300,31 +1550,28 @@ class EnhancedFlowExecutor(FlowExecutor):
                         if isinstance(key, ast.Constant):
                             output_name = key.value
                             if output_name not in [o["name"] for o in outputs]:
-                                outputs.append({
-                                    "name": output_name,
-                                    "type": "Any"
-                                })
+                                outputs.append({"name": output_name, "type": "Any"})
                 # Check if return value is a dict() call
                 elif isinstance(node.value, ast.Call):
-                    if isinstance(node.value.func, ast.Name) and node.value.func.id == "dict":
+                    if (
+                        isinstance(node.value.func, ast.Name)
+                        and node.value.func.id == "dict"
+                    ):
                         # Extract keys from dict(key=value) syntax
                         for keyword in node.value.keywords:
                             if keyword.arg:
                                 if keyword.arg not in [o["name"] for o in outputs]:
-                                    outputs.append({
-                                        "name": keyword.arg,
-                                        "type": "Any"
-                                    })
-        
+                                    outputs.append({"name": keyword.arg, "type": "Any"})
+
         # If no outputs found, assume single output
         if not outputs:
             outputs = [{"name": "output", "type": "Any"}]
-        
+
         return outputs
-    
+
     def _extract_type_annotation(self, annotation_node) -> str:
         """Extract type annotation as string"""
-        
+
         if isinstance(annotation_node, ast.Name):
             return annotation_node.id
         elif isinstance(annotation_node, ast.Constant):
@@ -1332,7 +1579,7 @@ class EnhancedFlowExecutor(FlowExecutor):
         elif isinstance(annotation_node, ast.Subscript):
             # Handle Generic types like List[int], Optional[str], Literal["a","b"]
             base = self._extract_type_annotation(annotation_node.value)
-            
+
             # Special handling for Literal
             if base == "Literal":
                 if isinstance(annotation_node.slice, ast.Tuple):
@@ -1343,7 +1590,7 @@ class EnhancedFlowExecutor(FlowExecutor):
                     return f"Literal{values}"
                 elif isinstance(annotation_node.slice, ast.Constant):
                     return f"Literal[{annotation_node.slice.value}]"
-            
+
             # Handle other generic types
             if isinstance(annotation_node.slice, ast.Name):
                 return f"{base}[{annotation_node.slice.id}]"
@@ -1353,10 +1600,10 @@ class EnhancedFlowExecutor(FlowExecutor):
                 return base
         else:
             return "Any"
-    
+
     def _extract_default_value(self, default_node):
         """Extract default value from AST node"""
-        
+
         if isinstance(default_node, ast.Constant):
             return default_node.value
         elif isinstance(default_node, ast.Name):
@@ -1364,7 +1611,9 @@ class EnhancedFlowExecutor(FlowExecutor):
             if default_node.id in ["True", "False", "None"]:
                 return {"True": True, "False": False, "None": None}[default_node.id]
             return default_node.id
-        elif isinstance(default_node, ast.UnaryOp) and isinstance(default_node.op, ast.USub):
+        elif isinstance(default_node, ast.UnaryOp) and isinstance(
+            default_node.op, ast.USub
+        ):
             # Handle negative numbers
             if isinstance(default_node.operand, ast.Constant):
                 return -default_node.operand.value
@@ -1374,5 +1623,5 @@ class EnhancedFlowExecutor(FlowExecutor):
             return {}
         elif isinstance(default_node, ast.Tuple):
             return ()
-        
+
         return None

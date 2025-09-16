@@ -2,8 +2,8 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional, Any, Dict, List
 from pathlib import Path
-from ..core.execute_code import execute_python_code
 from ..core import node_operations
+from ..core import venv_manager
 from ..core.enhanced_flow_executor import EnhancedFlowExecutor
 import os
 
@@ -14,16 +14,6 @@ PROJECTS_ROOT = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__f
 
 # Global executor instance for metadata analysis
 metadata_executor = EnhancedFlowExecutor(Path(PROJECTS_ROOT))
-
-class CodeExecutionRequest(BaseModel):
-    code: str
-    language: Optional[str] = "python"
-    timeout: Optional[int] = 30
-
-class CodeExecutionResponse(BaseModel):
-    output: str
-    error: Optional[str] = None
-    exit_code: int
 
 class GetNodeCodeRequest(BaseModel):
     project_id: str
@@ -56,17 +46,6 @@ class GetNodeMetadataRequest(BaseModel):
     project_id: str
     node_id: str
     node_data: Optional[Dict[str, Any]] = None
-
-@router.post("/execute", response_model=CodeExecutionResponse)
-async def execute_code(request: CodeExecutionRequest):
-    """
-    Execute Python code in a secure environment
-    """
-    if request.language != "python":
-        raise HTTPException(status_code=400, detail="Only Python is supported")
-    
-    result = execute_python_code(request.code, request.timeout)
-    return CodeExecutionResponse(**result)
 
 @router.post("/getcode")
 async def get_node_code(request: GetNodeCodeRequest):
@@ -170,9 +149,23 @@ except Exception as e:
     }}))
 """
         
-        # Execute the code using system Python
-        project_dir = os.path.join(PROJECTS_ROOT, request.project_id)
-        execution_result = execute_python_code(wrapper_code, timeout=30, python_executable=None, working_dir=project_dir)
+        project_path = Path(PROJECTS_ROOT) / request.project_id
+        if not project_path.exists():
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        try:
+            python_exe = str(venv_manager.python_bin(project_path))
+            exec_env = venv_manager.execution_env(project_path)
+        except venv_manager.VenvError as exc:
+            raise HTTPException(status_code=500, detail=str(exc))
+
+        execution_result = execute_python_code(
+            wrapper_code,
+            timeout=30,
+            python_executable=python_exe,
+            working_dir=str(project_path),
+            env=exec_env,
+        )
         
         if execution_result['exit_code'] == 0:
             try:

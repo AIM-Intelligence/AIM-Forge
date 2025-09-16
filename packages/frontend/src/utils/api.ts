@@ -25,10 +25,24 @@ import type {
   ExecuteFlowResponse,
   AnalyzeFlowRequest,
   AnalyzeFlowResponse,
-  ErrorResponse,
+  PackageListResponse,
+  PackageActionResponse,
+  PackageLogResponse,
 } from "../types";
 
 const API_BASE_URL = "/api";
+
+export class ApiError extends Error {
+  payload?: unknown;
+  status: number;
+
+  constructor(message: string, payload: unknown, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.payload = payload;
+    this.status = status;
+  }
+}
 
 // Helper function for API calls
 async function apiCall<T>(endpoint: string, options?: RequestInit): Promise<T> {
@@ -43,17 +57,33 @@ async function apiCall<T>(endpoint: string, options?: RequestInit): Promise<T> {
   if (!response.ok) {
     // Try to parse error response, but handle cases where it's not JSON
     let errorMessage = `API Error: ${response.statusText}`;
+    let payload: unknown = null;
+
     try {
       const contentType = response.headers.get("content-type");
       if (contentType && contentType.includes("application/json")) {
-        const error: ErrorResponse = await response.json();
-        errorMessage = error.detail || errorMessage;
+        payload = await response.json();
+        if (payload && typeof payload === "object") {
+          const detail = (payload as any).detail;
+          if (typeof detail === "string") {
+            errorMessage = detail;
+          } else if (detail && typeof detail === "object") {
+            if (typeof detail.message === "string") {
+              errorMessage = detail.message;
+            }
+          }
+        }
+      } else {
+        payload = await response.text();
+        if (typeof payload === "string" && payload.trim()) {
+          errorMessage = payload;
+        }
       }
     } catch (e) {
-      // If parsing fails, use the default error message
       console.error("Failed to parse error response:", e);
     }
-    throw new Error(errorMessage);
+
+    throw new ApiError(errorMessage, payload, response.status);
   }
 
   // Check if response has content before trying to parse
@@ -275,6 +305,39 @@ export const projectApi = {
       console.error('SSE streaming error:', error);
       if (onError) onError(error as Error);
     }
+  },
+
+  // Package management
+  async listPackages(projectId: string): Promise<PackageListResponse> {
+    return apiCall<PackageListResponse>(`/project/${projectId}/packages/list`);
+  },
+
+  async installPackage(
+    projectId: string,
+    packages: string | string[],
+  ): Promise<PackageActionResponse> {
+    return apiCall<PackageActionResponse>(`/project/${projectId}/packages/install`, {
+      method: "POST",
+      body: JSON.stringify({ packages }),
+    });
+  },
+
+  async uninstallPackage(
+    projectId: string,
+    packages: string | string[],
+  ): Promise<PackageActionResponse> {
+    return apiCall<PackageActionResponse>(`/project/${projectId}/packages/uninstall`, {
+      method: "DELETE",
+      body: JSON.stringify({ packages }),
+    });
+  },
+
+  async getPackageLog(
+    projectId: string,
+    logPath: string,
+  ): Promise<PackageLogResponse> {
+    const encoded = encodeURIComponent(logPath);
+    return apiCall<PackageLogResponse>(`/project/${projectId}/packages/logs/${encoded}`);
   },
 
   // Analyze flow
