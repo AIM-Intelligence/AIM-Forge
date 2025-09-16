@@ -3,14 +3,32 @@ import shutil
 import os
 from pathlib import Path
 from typing import List, Dict, Any
+
 from .projects_registry import (
     add_project_to_registry,
     remove_project_from_registry,
     get_projects_registry
 )
+from . import venv_manager
 
 # Get absolute path to projects directory
 PROJECTS_BASE_PATH = Path(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))) / "projects"
+BASE_REQUIREMENTS_FILE = Path(__file__).resolve().parents[2] / "base_requirements.txt"
+
+
+def _load_base_requirements() -> List[str]:
+    """Return default packages that should be installed in new project environments."""
+    if not BASE_REQUIREMENTS_FILE.exists():
+        return []
+
+    requirements: List[str] = []
+    with open(BASE_REQUIREMENTS_FILE, "r", encoding="utf-8") as handle:
+        for line in handle:
+            candidate = line.strip()
+            if not candidate or candidate.startswith("#"):
+                continue
+            requirements.append(candidate)
+    return requirements
 
 def ensure_projects_dir() -> None:
     """Ensure the projects directory exists"""
@@ -47,25 +65,44 @@ def create_project(project_name: str, project_description: str, project_id: str)
         
         with open(project_json_path, 'w') as f:
             json.dump(initial_structure, f, indent=2)
-        
+
+        # Initialize isolated virtual environment for the project
+        base_requirements = _load_base_requirements()
+        try:
+            venv_manager.create(project_path, base_requirements)
+        except Exception:
+            # Clean up project directory and registry record if venv creation fails
+            shutil.rmtree(project_path, ignore_errors=True)
+            remove_project_from_registry(project_name, project_id)
+            raise
+
         return {
             "success": True,
             "message": f"Project '{project_name}' created successfully",
         }
     except Exception as e:
         # If folder creation fails, remove from registry
-        remove_project_from_registry(project_name)
+        try:
+            remove_project_from_registry(project_name, project_id)
+        except ValueError:
+            pass
         raise e
 
 def delete_project(project_name: str, project_id:str) -> Dict[str, Any]:
     """Delete entire project folder including venv and remove from registry"""
     ensure_projects_dir()
     project_path = PROJECTS_BASE_PATH / project_id
-    
+
     if not project_path.exists():
         raise ValueError(f"Project with ID '{project_id}' does not exist")
-    
-    
+
+    # Remove virtual environment first so no orphaned interpreters remain
+    try:
+        venv_manager.delete(project_path)
+    except venv_manager.VenvError:
+        # Proceed even if venv is missing or already cleaned up
+        pass
+
     # Delete folder
     shutil.rmtree(project_path)
     

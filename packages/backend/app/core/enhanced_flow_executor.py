@@ -26,6 +26,7 @@ import ast
 
 from .flow_executor import FlowExecutor
 from .execute_code import execute_python_code
+from . import venv_manager
 
 
 class EnhancedFlowExecutor(FlowExecutor):
@@ -310,79 +311,91 @@ class EnhancedFlowExecutor(FlowExecutor):
     ) -> Any:
         """Execute node code in the same process with a safe namespace"""
 
-        # Add AIM-RedLab to Python path for imports
-        import sys
-        import os
+        project_path = self.projects_root / project_id
 
-        aim_redlab_path = os.environ.get(
-            "AIM_REDLAB_PATH", "/Users/kwontaeyoun/Desktop/AIM/AIM-RedLab"
-        )
-        if os.path.exists(aim_redlab_path) and aim_redlab_path not in sys.path:
-            sys.path.insert(0, aim_redlab_path)
+        try:
+            with venv_manager.activated(project_path):
+                # Add AIM-RedLab to Python path for imports
+                import sys
+                import os
 
-        # Get node file path
-        file_name = node_data.get("data", {}).get("file")
-        if not file_name:
-            title = node_data.get("data", {}).get("title", f"Node_{node_id}")
-            sanitized_title = "".join(
-                c if c.isalnum() or c == "_" else "_" for c in title
-            )
-            file_name = f"{node_id}_{sanitized_title}.py"
+                aim_redlab_path = os.environ.get(
+                    "AIM_REDLAB_PATH", "/Users/kwontaeyoun/Desktop/AIM/AIM-RedLab"
+                )
+                if os.path.exists(aim_redlab_path) and aim_redlab_path not in sys.path:
+                    sys.path.insert(0, aim_redlab_path)
 
-        file_path = self.projects_root / project_id / file_name
+                # Get node file path
+                file_name = node_data.get("data", {}).get("file")
+                if not file_name:
+                    title = node_data.get("data", {}).get("title", f"Node_{node_id}")
+                    sanitized_title = "".join(
+                        c if c.isalnum() or c == "_" else "_" for c in title
+                    )
+                    file_name = f"{node_id}_{sanitized_title}.py"
 
-        if not file_path.exists():
-            raise FileNotFoundError(f"Node file '{file_name}' not found")
+                file_path = project_path / file_name
 
-        # Read node code
-        with open(file_path, "r", encoding="utf-8") as f:
-            node_code = f.read()
+                if not file_path.exists():
+                    raise FileNotFoundError(f"Node file '{file_name}' not found")
 
-        # Create safe execution namespace
-        namespace = self._create_safe_namespace(input_data)
+                # Read node code
+                with open(file_path, "r", encoding="utf-8") as f:
+                    node_code = f.read()
 
-        # Execute the code
-        exec(node_code, namespace)
+                # Create safe execution namespace
+                namespace = self._create_safe_namespace(input_data)
 
-        # Find and execute the main function
-        result = None
-        function_found = False
+                # Execute the code
+                exec(node_code, namespace)
 
-        # Priority: RunScript > main > first callable
-        if "RunScript" in namespace and callable(namespace["RunScript"]):
-            result = self._call_function_with_input(namespace["RunScript"], input_data)
-            function_found = True
-        elif "main" in namespace and callable(namespace["main"]):
-            result = self._call_function_with_input(namespace["main"], input_data)
-            function_found = True
-        else:
-            # Find first callable function
-            for name, obj in namespace.items():
-                if (
-                    callable(obj)
-                    and not name.startswith("_")
-                    and name
-                    not in [
-                        "json",
-                        "sys",
-                        "traceback",
-                        "inspect",
-                        "math",
-                        "datetime",
-                        "pandas",
-                        "pd",
-                        "numpy",
-                        "np",
-                    ]
-                ):
-                    result = self._call_function_with_input(obj, input_data)
+                # Find and execute the main function
+                result = None
+                function_found = False
+
+                # Priority: RunScript > main > first callable
+                if "RunScript" in namespace and callable(namespace["RunScript"]):
+                    result = self._call_function_with_input(
+                        namespace["RunScript"], input_data
+                    )
                     function_found = True
-                    break
+                elif "main" in namespace and callable(namespace["main"]):
+                    result = self._call_function_with_input(
+                        namespace["main"], input_data
+                    )
+                    function_found = True
+                else:
+                    # Find first callable function
+                    for name, obj in namespace.items():
+                        if (
+                            callable(obj)
+                            and not name.startswith("_")
+                            and name
+                            not in [
+                                "json",
+                                "sys",
+                                "traceback",
+                                "inspect",
+                                "math",
+                                "datetime",
+                                "pandas",
+                                "pd",
+                                "numpy",
+                                "np",
+                            ]
+                        ):
+                            result = self._call_function_with_input(obj, input_data)
+                            function_found = True
+                            break
 
-        if not function_found:
-            raise RuntimeError("No callable function found in node")
+                if not function_found:
+                    raise RuntimeError("No callable function found in node")
 
-        return result
+                return result
+        except venv_manager.VenvError as exc:
+            raise RuntimeError(
+                f"Virtual environment not ready for project '{project_id}': {exc}"
+            ) from exc
 
     def _create_safe_namespace(self, input_data: Any) -> Dict:
         """Create a safe execution namespace with limited builtins"""
@@ -464,9 +477,9 @@ class EnhancedFlowExecutor(FlowExecutor):
             "asyncio": __import__("asyncio"),
             "tempfile": __import__("tempfile"),
             # AI model libraries
-            "openai": __import__("openai"),
-            "anthropic": __import__("anthropic"),
-            "together": __import__("together"),
+            # "openai": __import__("openai"),
+            # "anthropic": __import__("anthropic"),
+            # "together": __import__("together"),
         }
 
         # Don't import pandas/numpy here - let nodes import them if needed
@@ -541,7 +554,7 @@ class EnhancedFlowExecutor(FlowExecutor):
             # Don't retry for RunScript functions - they should always use kwargs
             if func.__name__ == "RunScript":
                 raise
-            
+
             if "missing" in str(e) and "required positional argument" in str(e):
                 # Try calling with no arguments if it's expecting nothing
                 try:
@@ -968,12 +981,12 @@ class EnhancedFlowExecutor(FlowExecutor):
         execution_results = {}
         node_outputs = {}
         result_nodes = {}
-        
+
         # Execution control dictionary to share state between async tasks
         execution_control = {
             "stopped": False,
             "error_node_id": None,
-            "error_node_title": None
+            "error_node_title": None,
         }
 
         # Filter execution order to count only main processing components
@@ -1048,7 +1061,7 @@ class EnhancedFlowExecutor(FlowExecutor):
 
         # Track nodes directly connected to error node to allow them to receive error
         error_downstream_nodes = set()
-        
+
         # Process nodes in levels (nodes that can execute in parallel)
         while len(completed_nodes) < len(execution_order):
             # Check if execution was stopped due to error
@@ -1062,13 +1075,16 @@ class EnhancedFlowExecutor(FlowExecutor):
                             # Only allow Result nodes to receive error information
                             if target_node.get("type") == "result":
                                 error_downstream_nodes.add(edge["target"])
-                
+
                 # Allow direct downstream nodes to execute to receive the error
                 # Skip all other remaining nodes
                 for node_id in execution_order:
-                    if node_id not in completed_nodes and node_id not in error_downstream_nodes:
+                    if (
+                        node_id not in completed_nodes
+                        and node_id not in error_downstream_nodes
+                    ):
                         node_data = nodes[node_id]
-                        
+
                         # Create skipped result
                         skipped_result = {
                             "status": "skipped",
@@ -1076,29 +1092,34 @@ class EnhancedFlowExecutor(FlowExecutor):
                             "execution_time_ms": 0,
                             "logs": "",
                             "skipped_reason": "upstream_error",
-                            "error_source": execution_control["error_node_id"]
+                            "error_source": execution_control["error_node_id"],
                         }
-                        
+
                         execution_results[node_id] = skipped_result
-                        
+
                         # Send skip event for main components
                         if node_id in main_component_indices:
                             yield {
                                 "type": "node_complete",
                                 "node_id": node_id,
-                                "node_title": node_data.get("data", {}).get("title", "Unknown"),
+                                "node_title": node_data.get("data", {}).get(
+                                    "title", "Unknown"
+                                ),
                                 "node_index": main_component_indices[node_id] + 1,
                                 "total_nodes": main_component_count,
                                 "result": skipped_result,
                                 "timestamp": time.time(),
                             }
-                        
+
                         completed_nodes.add(node_id)
-                
+
                 # If no direct downstream nodes remain, break
-                if not any(node in error_downstream_nodes and node not in completed_nodes for node in execution_order):
+                if not any(
+                    node in error_downstream_nodes and node not in completed_nodes
+                    for node in execution_order
+                ):
                     break
-            
+
             # Find nodes that can execute now (dependencies satisfied)
             ready_nodes = []
             for node_id in execution_order:
@@ -1303,12 +1324,14 @@ class EnhancedFlowExecutor(FlowExecutor):
                     "logs": result.get("logs"),
                     "node_id": node_id,
                 }
-                
+
                 # Set flag to stop execution if execution_control is provided
                 if execution_control:
                     execution_control["stopped"] = True
                     execution_control["error_node_id"] = node_id
-                    execution_control["error_node_title"] = node_data.get("data", {}).get("title", "Unknown")
+                    execution_control["error_node_title"] = node_data.get(
+                        "data", {}
+                    ).get("title", "Unknown")
 
             # Return node completion event
             # Send updates for all nodes including Result nodes for real-time updates

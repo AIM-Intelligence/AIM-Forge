@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from collections import defaultdict, deque
 
 from .execute_code import execute_python_code
+from . import venv_manager
 
 
 class FlowExecutor:
@@ -19,6 +20,13 @@ class FlowExecutor:
 
     def __init__(self, projects_root: str):
         self.projects_root = Path(projects_root)
+
+    def _execution_context(self, project_id: str) -> Tuple[str, Dict[str, str], Path]:
+        """Return python executable, environment, and project path for execution."""
+        project_path = self.projects_root / project_id
+        python_path = venv_manager.python_bin(project_path)
+        env = venv_manager.execution_env(project_path)
+        return str(python_path), env, project_path
 
     def _load_structure(self, project_id: str) -> Tuple[Dict[str, Dict], List[Dict]]:
         """Load project structure from JSON file"""
@@ -152,15 +160,15 @@ class FlowExecutor:
             )
             file_name = f"{node_id}_{sanitized_title}.py"
 
-        file_path = self.projects_root / project_id / file_name
+        project_path = self.projects_root / project_id
+        file_path = project_path / file_name
 
         if not file_path.exists():
             # Log more details for debugging
             import os
 
-            project_dir = self.projects_root / project_id
             existing_files = (
-                list(project_dir.glob("*.py")) if project_dir.exists() else []
+                list(project_path.glob("*.py")) if project_path.exists() else []
             )
             file_list = (
                 "\n".join([f.name for f in existing_files])
@@ -259,12 +267,24 @@ except Exception as e:
     }}))
 """
 
-        # Execute with system Python environment
+        # Execute with project-specific virtual environment
         start_time = time.time()
-        python_exe = None  # Use system Python
-        project_dir = str(self.projects_root / project_id)
+        try:
+            python_exe, exec_env, project_path = self._execution_context(project_id)
+        except venv_manager.VenvError as exc:
+            return {
+                "status": "error",
+                "error": str(exc),
+                "execution_time_ms": 0,
+                "logs": "가상환경을 초기화할 수 없습니다.",
+            }
+
         execution_result = execute_python_code(
-            wrapper_code, timeout, python_exe, project_dir
+            wrapper_code,
+            timeout,
+            python_executable=python_exe,
+            working_dir=str(project_path),
+            env=exec_env,
         )
         execution_time_ms = round((time.time() - start_time) * 1000)
 
