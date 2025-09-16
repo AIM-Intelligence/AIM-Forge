@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { componentLibrary, type ComponentTemplate } from "../../../config/componentLibrary";
+import PackageManagerPanel from "./PackageManagerPanel";
 
 interface ProjectPanelProps {
+  projectId: string;
   projectTitle: string;
   nodeCount: number;
   edgeCount: number;
@@ -10,6 +12,7 @@ interface ProjectPanelProps {
 }
 
 export default function ProjectPanel({
+  projectId,
   projectTitle,
   nodeCount,
   edgeCount,
@@ -17,6 +20,7 @@ export default function ProjectPanel({
 }: ProjectPanelProps) {
   const navigate = useNavigate();
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isPackagePanelOpen, setIsPackagePanelOpen] = useState(false);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
     new Set(componentLibrary.map(cat => cat.id))
   );
@@ -145,6 +149,27 @@ export default function ProjectPanel({
             )}
           </div>
         </div>
+
+      <button
+        onClick={() => setIsPackagePanelOpen(!isPackagePanelOpen)}
+        className="w-full px-3 py-2 bg-neutral-800 text-white rounded-lg hover:bg-neutral-700 transition-colors flex items-center justify-center gap-2 border border-neutral-600"
+      >
+        <span className="font-medium">Packages</span>
+        <svg
+          className={`w-4 h-4 transition-transform duration-300 ${isPackagePanelOpen ? 'rotate-180' : 'rotate-0'}`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {isPackagePanelOpen && (
+        <div className="w-full">
+          <PackageManagerPanel projectId={projectId} />
+        </div>
+      )}
     </div>
   );
 }

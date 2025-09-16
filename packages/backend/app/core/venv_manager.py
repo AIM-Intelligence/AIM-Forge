@@ -8,11 +8,18 @@ import sys
 import threading
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence
+import json
+from datetime import datetime, timezone
 
 
 class VenvError(RuntimeError):
     """Raised when a virtual environment operation fails."""
+
+    def __init__(self, message: str, stdout: str = "", stderr: str = "") -> None:
+        super().__init__(message)
+        self.stdout = stdout
+        self.stderr = stderr
 
 
 VENV_DIRNAME = ".venv"
@@ -38,8 +45,135 @@ def _run_uv(command: Sequence[str], error_prefix: str) -> subprocess.CompletedPr
         raise VenvError("uv 명령을 찾을 수 없습니다. uv가 설치되어 있는지 확인하세요.") from exc
     except subprocess.CalledProcessError as exc:
         output = exc.stderr or exc.stdout or str(exc)
-        raise VenvError(f"{error_prefix}: {output}") from exc
+        raise VenvError(f"{error_prefix}: {output}", stdout=exc.stdout or "", stderr=exc.stderr or "") from exc
 
+
+def _run_python_pip(
+    project_path: Path, args: Sequence[str], error_prefix: str
+) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(
+            [str(python_bin(project_path)), "-m", "pip", *args],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=execution_env(project_path),
+        )
+    except subprocess.CalledProcessError as exc:  # pragma: no cover
+        output = exc.stderr or exc.stdout or str(exc)
+        raise VenvError(f"{error_prefix}: {output}", stdout=exc.stdout or "", stderr=exc.stderr or "") from exc
+
+
+
+def _metadata_path(project_path: Path) -> Path:
+    return project_path / "env_meta.json"
+
+
+def _pip_logs_dir(project_path: Path) -> Path:
+    path = project_path / ".pip-logs"
+    path.mkdir(exist_ok=True)
+    return path
+
+
+def write_pip_log(
+    project_path: Path | str,
+    action: str,
+    packages: Sequence[str],
+    stdout: str,
+    stderr: str,
+    success: bool,
+) -> str:
+    project_path = _project_path(Path(project_path))
+    logs_dir = _pip_logs_dir(project_path)
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    status = "success" if success else "error"
+    file_name = f"{timestamp}_{action}_{status}.log"
+    log_path = logs_dir / file_name
+
+    header = [
+        f"action: {action}",
+        f"packages: {', '.join(packages)}" if packages else "packages: (none)",
+        f"status: {status}",
+        f"timestamp: {datetime.now(timezone.utc).isoformat()}",
+        "",
+    ]
+
+    with open(log_path, "w", encoding="utf-8") as handle:
+        handle.write("\n".join(header))
+        if stdout:
+            handle.write("\n[stdout]\n")
+            handle.write(stdout)
+        if stderr:
+            handle.write("\n[stderr]\n")
+            handle.write(stderr)
+
+    return str(log_path.relative_to(project_path))
+
+
+def update_env_metadata(
+    project_path: Path | str,
+    packages: Sequence[Dict[str, str]],
+    last_action: Dict[str, Any],
+) -> None:
+    project_path = _project_path(Path(project_path))
+    metadata_path = _metadata_path(project_path)
+    payload = {
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "packages": list(packages),
+        "last_action": last_action,
+    }
+    metadata_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def read_env_metadata(project_path: Path | str) -> Dict[str, Any]:
+    project_path = _project_path(Path(project_path))
+    metadata_path = _metadata_path(project_path)
+    if not metadata_path.exists():
+        return {
+            "updated_at": None,
+            "packages": [],
+            "last_action": None,
+        }
+
+    try:
+        return json.loads(metadata_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {
+            "updated_at": None,
+            "packages": [],
+            "last_action": None,
+        }
+
+
+def read_pip_log(project_path: Path | str, log_path: str) -> Dict[str, str]:
+    project_path = _project_path(Path(project_path))
+    logs_dir = _pip_logs_dir(project_path)
+
+    relative = Path(log_path)
+    if relative.is_absolute() or ".." in relative.parts:
+        raise VenvError("로그 경로가 올바르지 않습니다.")
+
+    if str(relative).startswith(str(logs_dir.name)) or str(relative).startswith(".pip-logs"):
+        candidate = project_path / relative
+    else:
+        candidate = logs_dir / relative
+
+    candidate = candidate.resolve()
+    if candidate.is_dir():
+        raise VenvError("로그 파일 경로가 디렉터리입니다.")
+    if not str(candidate).startswith(str(logs_dir.resolve())):
+        raise VenvError("로그 경로가 허용된 범위를 벗어났습니다.")
+    if not candidate.exists():
+        raise VenvError("로그 파일을 찾을 수 없습니다.")
+
+    content = candidate.read_text(encoding="utf-8", errors="ignore")
+    return {
+        "path": str(candidate.relative_to(project_path)),
+        "content": content,
+    }
 
 def _project_path(path: Path | str) -> Path:
     project_path = Path(path)
@@ -167,7 +301,35 @@ def install(project_path: Path | str, packages: Sequence[str]) -> subprocess.Com
         str(python_path),
         *packages,
     ]
-    return _run_uv(command, "패키지 설치에 실패했습니다")
+    try:
+        return _run_uv(command, "패키지 설치에 실패했습니다")
+    except VenvError as exc:
+        if "Operation not permitted" not in str(exc):
+            raise
+        fallback_cmd = ["install", *packages]
+        return _run_python_pip(project_path, fallback_cmd, "패키지 설치에 실패했습니다")
+
+
+def uninstall(project_path: Path | str, packages: Sequence[str]) -> subprocess.CompletedProcess[str]:
+    """Uninstall packages from the project's virtual environment."""
+    if not packages:
+        raise VenvError("삭제할 패키지가 제공되지 않았습니다.")
+
+    project_path = _project_path(Path(project_path))
+    command = ["uninstall", "-y", *packages]
+    return _run_python_pip(project_path, command, "패키지 삭제에 실패했습니다")
+
+
+def list_installed(project_path: Path | str) -> List[Dict[str, str]]:
+    """Return installed packages in the project's virtual environment."""
+    project_path = _project_path(Path(project_path))
+    command = ["list", "--format", "json"]
+
+    result = _run_python_pip(project_path, command, "패키지 목록을 조회하지 못했습니다")
+    try:
+        return json.loads(result.stdout or "[]")
+    except json.JSONDecodeError as exc:  # pragma: no cover
+        raise VenvError(f"패키지 목록 파싱에 실패했습니다: {exc}") from exc
 
 
 def _bootstrap_seed_packages(project_path: Path) -> None:
