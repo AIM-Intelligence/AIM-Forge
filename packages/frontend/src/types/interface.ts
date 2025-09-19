@@ -21,7 +21,7 @@ export interface NodeData {
   title: string;
   description?: string;
   file?: string;
-  mode?: "basic" | "script";  // Node mode
+  mode?: "basic" | "script" | "unknown";  // Node mode
   inputs?: PortInfo[];         // Input ports
   outputs?: PortInfo[];        // Output ports
   viewCode?: () => void;       // Handler for view code button

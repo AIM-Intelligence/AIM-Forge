@@ -104,7 +104,6 @@ export default function StartNode(props: NodeProps<StartNodeType>) {
             case 'start':
               // Set nodes in this pipeline as executing
               const affectedNodes = (event as any).affected_nodes;
-              const outputResultNodes = (event as any).output_result_nodes || [];
               const inputResultNodes = (event as any).input_result_nodes || [];
               
               

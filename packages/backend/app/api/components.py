@@ -38,7 +38,15 @@ async def get_component_library():
         templates = []
         
         # Define category folders
-        categories = ["flow_control", "params", "inputs", "dataops", "jailbreak", "reports"]
+        categories = [
+            "flow_control",
+            "params",
+            "inputs",
+            "dataops",
+            "jailbreak",
+            "reports",
+            "annotations",
+        ]
         
         # List all template files from category folders
         if TEMPLATES_DIR.exists():
@@ -121,7 +129,16 @@ async def create_node_from_template(request: CreateFromTemplateRequest):
             template_file = TEMPLATES_DIR / f"{request.template_name}.py"
         else:
             # Search in category folders
-            categories = ["flow_control", "params", "inputs", "dataops", "models", "jailbreak", "reports"]
+            categories = [
+                "flow_control",
+                "params",
+                "inputs",
+                "dataops",
+                "models",
+                "jailbreak",
+                "reports",
+                "annotations",
+            ]
             for category in categories:
                 potential_file = TEMPLATES_DIR / category / f"{request.template_name}.py"
                 if potential_file.exists():

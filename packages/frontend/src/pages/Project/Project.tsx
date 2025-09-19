@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useParams } from "react-router-dom";
 import IdeModal from "../../components/modal/Ide";
 import Loading from "../../components/loading/Loading";
@@ -73,6 +73,7 @@ export default function Project() {
     transformedNodes,
     transformedEdges,
     maxNodeId,
+    updateStoredNodePosition,
   } = useProjectData(projectId, handleNodeClick);
 
   // Initialize node counter with max ID
@@ -81,7 +82,7 @@ export default function Project() {
   }
 
   // Node operations
-  const { nodes, setNodes, edges, setEdges, onNodesChange, onEdgesChange, addNewNode } =
+  const { nodes, setNodes, edges, setEdges, onNodesChange, onEdgesChange } =
     useNodeOperations({
       projectId,
       initialNodes: transformedNodes,
@@ -90,6 +91,7 @@ export default function Project() {
       setNodeIdCounter,
       onNodeClick: handleNodeClick,
       reactFlowInstance: reactFlowInstanceRef,
+      onNodePositionUpdate: updateStoredNodePosition,
     });
 
   // Edge operations
@@ -177,7 +179,6 @@ export default function Project() {
           let position = { x: 250, y: 100 }; // Default fallback
           
           if (reactFlowInstanceRef.current) {
-            const { x, y, zoom } = reactFlowInstanceRef.current.getViewport();
             const centerX = window.innerWidth / 2;
             const centerY = window.innerHeight / 2;
             
@@ -217,7 +218,7 @@ export default function Project() {
         console.error("Error creating node from template:", error);
       }
     },
-    [projectId, nodeIdCounter, addNewNode]
+    [projectId, nodeIdCounter]
   );
 
   // Handle retry

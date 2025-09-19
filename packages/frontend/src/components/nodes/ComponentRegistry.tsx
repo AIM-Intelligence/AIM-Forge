@@ -2,12 +2,8 @@ import type { ComponentType } from 'react';
 import type { NodeProps } from '@xyflow/react';
 
 // Import all category modules
-import * as FlowControl from './flow-control';
 import * as Params from './params';
-import * as Inputs from './inputs';
-import * as DataOps from './dataops';
-import * as Jailbreak from './jailbreak';
-import * as Reports from './reports';
+import * as Annotations from './annotations';
 
 /**
  * Component Registry for extensible node system
@@ -23,6 +19,7 @@ type ComponentRegistry = {
 export const componentRegistry: ComponentRegistry = {
   // Add components that have componentType defined
   ...(Params.TextInputNode ? { 'TextInput': Params.TextInputNode } : {}),
+  ...(Annotations.MarkdownNoteNode ? { 'MarkdownNote': Annotations.MarkdownNoteNode } : {}),
   // Future components will be added automatically when they export with metadata
   // The pattern is: componentType -> Component mapping
 };

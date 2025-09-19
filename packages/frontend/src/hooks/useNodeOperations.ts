@@ -7,14 +7,12 @@ import {
   type OnEdgesChange,
   type NodeChange,
 } from "@xyflow/react";
-import type { Edge } from "@xyflow/react";
+import type { Edge, Node as FlowNode } from "@xyflow/react";
 import { projectApi } from "../utils/api";
-import type { DefaultNodeType } from "../components/nodes/DefaultNode";
-import type { StartNodeType } from "../components/nodes/flow-control/StartNode";
-import type { ResultNodeType } from "../components/nodes/flow-control/ResultNode";
+import type { NodeData } from "../types";
 
-// Union type for all node types
-type AnyNodeType = DefaultNodeType | StartNodeType | ResultNodeType;
+// Treat all React Flow nodes uniformly for operations
+type AnyNodeType = FlowNode<NodeData>;
 
 interface UseNodeOperationsProps {
   projectId: string | undefined;
@@ -22,8 +20,9 @@ interface UseNodeOperationsProps {
   initialEdges: Edge[];
   nodeIdCounter: number;
   setNodeIdCounter: React.Dispatch<React.SetStateAction<number>>;
-  onNodeClick: (nodeId: string, title: string) => void;
+  onNodeClick: (nodeId: string, title: string, file?: string) => void;
   reactFlowInstance?: React.MutableRefObject<any>;
+  onNodePositionUpdate?: (nodeId: string, position: { x: number; y: number }) => void;
 }
 
 interface UseNodeOperationsReturn {
@@ -48,6 +47,7 @@ export function useNodeOperations({
   setNodeIdCounter,
   onNodeClick,
   reactFlowInstance,
+  onNodePositionUpdate,
 }: UseNodeOperationsProps): UseNodeOperationsReturn {
   const [nodes, setNodes, onNodesChangeInternal] =
     useNodesState<AnyNodeType>(initialNodes as any);
@@ -337,6 +337,14 @@ export function useNodeOperations({
         (change) => change.type === "position" && change.dragging === false
       );
 
+      if (positionChanges.length > 0) {
+        positionChanges.forEach((change) => {
+          if (onNodePositionUpdate && change.type === "position" && change.position) {
+            onNodePositionUpdate(change.id, change.position);
+          }
+        });
+      }
+
       if (positionChanges.length > 0 && projectId) {
         // Clear existing timeout
         if (positionUpdateTimeoutRef.current) {
@@ -360,7 +368,7 @@ export function useNodeOperations({
         }, 500); // Wait 500ms after drag ends before updating
       }
     },
-    [onNodesChangeInternal, projectId]
+    [onNodesChangeInternal, onNodePositionUpdate, projectId]
   );
 
   // Add new node
@@ -421,7 +429,7 @@ export function useNodeOperations({
                 file: response.node.data.file,
                 viewCode: () => onNodeClick(nodeId, nodeData.title),
               },
-            } as DefaultNodeType;
+            } satisfies AnyNodeType;
           } else if (nodeData.nodeType === "start") {
             // Create StartNode without viewCode
             newNode = {
@@ -433,7 +441,7 @@ export function useNodeOperations({
                 description: nodeData.description,
                 file: response.node.data.file,
               },
-            } as StartNodeType;
+            } satisfies AnyNodeType;
           } else {
             // Create ResultNode without viewCode or file
             newNode = {
@@ -444,7 +452,7 @@ export function useNodeOperations({
                 title: nodeData.title,
                 description: nodeData.description,
               },
-            } as ResultNodeType;
+            } satisfies AnyNodeType;
           }
 
           setNodes((nds) => [...nds, newNode]);

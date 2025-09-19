@@ -10,6 +10,7 @@ import { dataopsComponents } from '../components/nodes/dataops';
 import { modelsComponents } from '../components/nodes/models';
 import { jailbreakComponents } from '../components/nodes/jailbreak';
 import { reportsComponents } from '../components/nodes/reports';
+import { annotationsComponents } from '../components/nodes/annotations';
 
 export interface ComponentTemplate {
   id: string;
@@ -30,48 +31,57 @@ export interface ComponentCategory {
 }
 
 // Build component library from category exports
+const withCategory = (components: ComponentTemplate[], category: string) =>
+  components.map(component => ({ ...component, category }));
+
 export const componentLibrary: ComponentCategory[] = [
   {
     id: "flow-control",
     name: "Flow Control",
     icon: "🎮",
-    components: flowControlComponents.map(c => ({ ...c, category: "flow-control" })),
+    components: withCategory(flowControlComponents as ComponentTemplate[], "flow-control"),
   },
   {
     id: "params",
     name: "Parameters",
     icon: "⚙️",
-    components: paramsComponents.map(c => ({ ...c, category: "params" })),
+    components: withCategory(paramsComponents as ComponentTemplate[], "params"),
   },
   {
     id: "inputs",
     name: "Inputs",
     icon: "📥",
-    components: inputsComponents.map(c => ({ ...c, category: "inputs" })),
+    components: withCategory(inputsComponents as ComponentTemplate[], "inputs"),
   },
   {
     id: "dataops",
     name: "Data Operations",
     icon: "🔄",
-    components: dataopsComponents.map(c => ({ ...c, category: "dataops" })),
+    components: withCategory(dataopsComponents as ComponentTemplate[], "dataops"),
   },
   {
     id: "models",
     name: "AI Models",
     icon: "🤖",
-    components: modelsComponents.map(c => ({ ...c, category: "models" })),
+    components: withCategory(modelsComponents as ComponentTemplate[], "models"),
   },
   {
     id: "jailbreak",
     name: "Jailbreak",
     icon: "⚔️",
-    components: jailbreakComponents.map(c => ({ ...c, category: "jailbreak" })),
+    components: withCategory(jailbreakComponents as ComponentTemplate[], "jailbreak"),
   },
   {
     id: "reports",
     name: "Reports",
     icon: "📊",
-    components: reportsComponents.map(c => ({ ...c, category: "reports" })),
+    components: withCategory(reportsComponents as ComponentTemplate[], "reports"),
+  },
+  {
+    id: "annotations",
+    name: "Annotations",
+    icon: "🗒️",
+    components: withCategory(annotationsComponents as ComponentTemplate[], "annotations"),
   },
 ].filter(category => category.components.length > 0); // Only show categories with components
 

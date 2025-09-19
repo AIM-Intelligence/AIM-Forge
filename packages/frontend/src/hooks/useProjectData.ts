@@ -1,13 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { projectApi, codeApi } from "../utils/api";
-import type { ProjectStructure, ProjectNode, ProjectEdge } from "../types";
-import type { DefaultNodeType } from "../components/nodes/DefaultNode";
-import type { StartNodeType } from "../components/nodes/flow-control/StartNode";
-import type { ResultNodeType } from "../components/nodes/flow-control/ResultNode";
-import type { Edge, MarkerType } from "@xyflow/react";
+import type { ProjectStructure, ProjectNode, ProjectEdge, Position, NodeData } from "../types";
+import type { Edge, MarkerType, Node as FlowNode } from "@xyflow/react";
 
-// Union type for all node types
-type AnyNodeType = DefaultNodeType | StartNodeType | ResultNodeType;
+type AnyNodeType = FlowNode<NodeData>;
 
 interface UseProjectDataReturn {
   projectData: ProjectStructure | null;
@@ -18,11 +14,12 @@ interface UseProjectDataReturn {
   transformedNodes: AnyNodeType[];
   transformedEdges: Edge[];
   maxNodeId: number;
+  updateStoredNodePosition: (nodeId: string, position: Position) => void;
 }
 
 export function useProjectData(
   projectId: string | undefined,
-  onNodeClick: (nodeId: string, title: string) => void
+  onNodeClick: (nodeId: string, title: string, file?: string) => void
 ): UseProjectDataReturn {
   const [projectData, setProjectData] = useState<ProjectStructure | null>(null);
   const [projectTitle, setProjectTitle] = useState<string>("");
@@ -32,6 +29,63 @@ export function useProjectData(
   const [transformedNodes, setTransformedNodes] = useState<AnyNodeType[]>([]);
   const [transformedEdges, setTransformedEdges] = useState<Edge[]>([]);
   const [maxNodeId, setMaxNodeId] = useState(1);
+
+  const updateMarkdownContent = useCallback((nodeId: string, content: string) => {
+    setTransformedNodes(prev =>
+      prev.map(node => {
+        if (node.id === nodeId && node.type === 'markdownNote') {
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              content,
+            },
+          } satisfies AnyNodeType;
+        }
+        return node;
+      })
+    );
+  }, []);
+
+  const dispatchDeleteEvent = useCallback((nodeId: string) => {
+    const event = new CustomEvent("deleteNode", {
+      detail: { id: nodeId },
+      bubbles: true,
+    });
+    document.dispatchEvent(event);
+  }, []);
+
+  const persistMarkdownContent = useCallback(
+    async (nodeId: string, content: string) => {
+      updateMarkdownContent(nodeId, content);
+
+      if (!projectId) return;
+
+      try {
+        await projectApi.updateNodeData({
+          project_id: projectId,
+          node_id: nodeId,
+          data: { content },
+        });
+      } catch (err) {
+        console.error(`Failed to update markdown note ${nodeId}:`, err);
+      }
+    },
+    [projectId, updateMarkdownContent]
+  );
+
+  const updateStoredNodePosition = useCallback((nodeId: string, position: Position) => {
+    setTransformedNodes(prev =>
+      prev.map(node =>
+        node.id === nodeId
+          ? {
+              ...node,
+              position,
+            }
+          : node
+      )
+    );
+  }, []);
 
   useEffect(() => {
     const fetchProjectData = async () => {
@@ -75,7 +129,7 @@ export function useProjectData(
                     ...baseData,
                     file: node.data.file,
                   },
-                } as StartNodeType;
+                } satisfies AnyNodeType;
               } else if (nodeType === 'result') {
                 return {
                   id: node.id,
@@ -85,7 +139,26 @@ export function useProjectData(
                     ...baseData,
                     dimensions: node.data.dimensions,
                   },
-                } as ResultNodeType;
+                } satisfies AnyNodeType;
+              } else if (node.data.componentType === 'MarkdownNote') {
+                return {
+                  id: node.id,
+                  type: 'markdownNote',
+                  position: node.position,
+                  data: {
+                    title: baseData.title,
+                    content: typeof node.data.content === 'string' ? node.data.content : '',
+                    fontSize: typeof node.data.fontSize === 'number' ? node.data.fontSize : undefined,
+                    fontWeight: node.data.fontWeight === 'bold' ? 'bold' : 'normal',
+                    componentType: node.data.componentType,
+                    onCommit: (value: string) => {
+                      persistMarkdownContent(node.id, value);
+                    },
+                    onDelete: (nodeId: string) => {
+                      dispatchDeleteEvent(nodeId);
+                    },
+                  },
+                } satisfies AnyNodeType;
               } else {
                 // Check if this is a TextInput component
                 const isTextInput = node.data.componentType === 'TextInput' || 
@@ -105,7 +178,7 @@ export function useProjectData(
                       onNodeClick(node.id, node.data.title || `Node ${node.id}`, node.data.file);
                     },
                   },
-                } as DefaultNodeType;
+                } satisfies AnyNodeType;
               }
             }
           );
@@ -272,7 +345,7 @@ export function useProjectData(
     };
 
     fetchProjectData();
-  }, [projectId, onNodeClick]);
+  }, [projectId, onNodeClick, persistMarkdownContent, dispatchDeleteEvent]);
 
   return {
     projectData,
@@ -283,5 +356,6 @@ export function useProjectData(
     transformedNodes,
     transformedEdges,
     maxNodeId,
+    updateStoredNodePosition,
   };
 }

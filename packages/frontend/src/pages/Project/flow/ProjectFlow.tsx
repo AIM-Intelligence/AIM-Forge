@@ -16,20 +16,19 @@ import {
   type Connection,
   type OnNodesChange,
   type OnEdgesChange,
+  type Node as FlowNode,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import type { DefaultNodeType } from "../../../components/nodes/DefaultNode";
-import type { StartNodeType } from "../../../components/nodes/flow-control/StartNode";
-import type { ResultNodeType } from "../../../components/nodes/flow-control/ResultNode";
-import type { TextInputNodeType } from "../../../components/nodes/params/TextInputNode";
+import type { NodeData } from "../../../types";
 import DefaultNode from "../../../components/nodes/DefaultNode";
 import StartNode from "../../../components/nodes/flow-control/StartNode";
 import ResultNode from "../../../components/nodes/flow-control/ResultNode";
 import TextInputNode from "../../../components/nodes/params/TextInputNode";
+import MarkdownNoteNode from "../../../components/nodes/annotations/MarkdownNoteNode";
 import DefaultEdge from "../../../components/edges/DefaultEdge";
 
-// Union type for all node types
-type AnyNodeType = DefaultNodeType | StartNodeType | ResultNodeType | TextInputNodeType;
+// Treat all nodes as generic React Flow nodes for this view
+type AnyNodeType = FlowNode<NodeData>;
 
 interface ProjectFlowProps {
   nodes: AnyNodeType[];
@@ -114,6 +113,7 @@ function ProjectFlowInner({
       start: StartNode,
       result: ResultNode,
       textInput: TextInputNode,
+      markdownNote: MarkdownNoteNode,
     }),
     []
   );

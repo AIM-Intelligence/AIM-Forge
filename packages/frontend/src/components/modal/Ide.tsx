@@ -38,28 +38,6 @@ const IdeModal: React.FC<IdeModalProps> = ({
     "loading"
   );
   const [runResult, setRunResult] = useState<string>("");
-  const [nodeMetadata, setNodeMetadata] = useState<any>(null);
-
-  // Fetch metadata
-  const fetchMetadata = useCallback(async () => {
-    if (!projectId || !nodeId) return;
-
-    try {
-      // Use the actual file name from node data if available
-      const fileName = nodeFile || `${nodeId}_${nodeTitle.replace(/\s+/g, '_')}.py`;
-      const result = await codeApi.getNodeMetadata({
-        project_id: projectId,
-        node_id: nodeId,
-        node_data: { data: { file: fileName } }
-      });
-
-      if (result.success && result.metadata) {
-        setNodeMetadata(result.metadata);
-      }
-    } catch (error) {
-      console.error("Error fetching metadata:", error);
-    }
-  }, [projectId, nodeId]);
 
   // Fetch code from backend when modal opens
   const fetchCode = useCallback(async () => {
@@ -117,7 +95,6 @@ const IdeModal: React.FC<IdeModalProps> = ({
           });
           
           if (metadataResult.success && metadataResult.metadata) {
-            setNodeMetadata(metadataResult.metadata);
             console.log("Metadata fetched after save:", metadataResult.metadata);
             
             // Emit custom event to update node ports in the flow with slight delay
@@ -187,13 +164,12 @@ const IdeModal: React.FC<IdeModalProps> = ({
     }
   }, [projectId, nodeId, nodeTitle]);
 
-  // Fetch code and metadata when modal opens
+  // Fetch code when modal opens
   useEffect(() => {
     if (isOpen) {
       fetchCode();
-      fetchMetadata();
     }
-  }, [isOpen, nodeId, fetchCode, fetchMetadata]);
+  }, [isOpen, nodeId, fetchCode]);
 
   useEffect(() => {
     if (isOpen) {
