@@ -1,8 +1,9 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { FocusEvent, KeyboardEvent, MouseEvent } from "react";
-import type { NodeProps } from "@xyflow/react";
+import type { ComponentProps, FocusEvent, KeyboardEvent, MouseEvent, ReactNode } from "react";
+import type { NodeProps, Node } from "@xyflow/react";
 import ReactMarkdown from "react-markdown";
 import type { Components } from "react-markdown";
+import type { ExtraProps } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { NodeData } from "../../../types";
 
@@ -14,9 +15,39 @@ export interface MarkdownNoteNodeData extends NodeData {
   onDelete?: (id: string) => void;
 }
 
-type MarkdownNoteNodeProps = NodeProps;
+export type MarkdownNoteNodeType = Node<MarkdownNoteNodeData>;
+
+type MarkdownNoteNodeProps = NodeProps<MarkdownNoteNodeType>;
+
+type MarkdownCodeProps = ComponentProps<'code'> & ExtraProps & {
+  inline?: boolean;
+  className?: string;
+  children?: ReactNode;
+};
 
 const DEFAULT_CONTENT = "여기에 설명을 입력하세요.";
+
+const renderCode: Components['code'] = ({ node, inline, className, children, ...rest }: MarkdownCodeProps) => {
+  void node;
+  if (inline) {
+    return (
+      <code
+        className="bg-neutral-900/70 text-red-300 px-1.5 py-0.5 rounded-md text-sm font-mono"
+        {...rest}
+      >
+        {children}
+      </code>
+    );
+  }
+
+  return (
+    <pre className="bg-neutral-900/80 border border-neutral-700 rounded-md p-3 overflow-x-auto text-sm font-mono text-neutral-200 my-3">
+      <code className={className} {...rest}>
+        {children}
+      </code>
+    </pre>
+  );
+};
 
 const markdownComponents: Components = {
   h1: ({ node, ...props }) => {
@@ -47,27 +78,7 @@ const markdownComponents: Components = {
     void node;
     return <li className="leading-relaxed" {...props} />;
   },
-  code: ({ node, inline, className, children, ...rest }: any) => {
-    void node;
-    if (inline) {
-      return (
-        <code
-          className="bg-neutral-900/70 text-red-300 px-1.5 py-0.5 rounded-md text-sm font-mono"
-          {...rest}
-        >
-          {children}
-        </code>
-      );
-    }
-
-    return (
-      <pre className="bg-neutral-900/80 border border-neutral-700 rounded-md p-3 overflow-x-auto text-sm font-mono text-neutral-200 my-3">
-        <code className={className} {...rest}>
-          {children}
-        </code>
-      </pre>
-    );
-  },
+  code: renderCode,
   blockquote: ({ node, ...props }) => {
     void node;
     return <blockquote className="border-l-4 border-neutral-600 pl-3 italic text-neutral-300 my-3" {...props} />;
@@ -78,12 +89,11 @@ const markdownComponents: Components = {
   },
 };
 
-function MarkdownNoteNode({ data, id }: MarkdownNoteNodeProps) {
-  const noteData = (data as MarkdownNoteNodeData) ?? { title: "", content: "" };
-
+function MarkdownNoteNode(props: MarkdownNoteNodeProps) {
+  const { data, id } = props;
   const sourceContent = useMemo(() => {
-    return noteData.content ?? "";
-  }, [noteData.content]);
+    return data.content ?? "";
+  }, [data.content]);
 
   const [displayContent, setDisplayContent] = useState(sourceContent);
   const [draft, setDraft] = useState(sourceContent);
@@ -116,11 +126,11 @@ function MarkdownNoteNode({ data, id }: MarkdownNoteNodeProps) {
       setDisplayContent(next);
       setDraft(next);
       setIsEditing(false);
-      if (typeof noteData.onCommit === "function") {
-        noteData.onCommit(next);
+      if (typeof data.onCommit === "function") {
+        data.onCommit(next);
       }
     },
-    [noteData]
+    [data]
   );
 
   const wrapperRef = useRef<HTMLDivElement | null>(null);
@@ -147,8 +157,8 @@ function MarkdownNoteNode({ data, id }: MarkdownNoteNodeProps) {
     [commitDraft, draft, displayContent]
   );
 
-  const fontSize = typeof noteData.fontSize === "number" ? noteData.fontSize : 16;
-  const fontWeight = noteData.fontWeight === "bold" ? "bold" : "normal";
+  const fontSize = typeof data.fontSize === "number" ? data.fontSize : 16;
+  const fontWeight = data.fontWeight === "bold" ? "bold" : "normal";
 
   const handleMouseDownCapture = useCallback(
     (event: MouseEvent<HTMLDivElement>) => {
@@ -208,8 +218,8 @@ function MarkdownNoteNode({ data, id }: MarkdownNoteNodeProps) {
             type="button"
             onClick={(event) => {
               event.stopPropagation();
-              if (typeof noteData.onDelete === "function") {
-                noteData.onDelete(id);
+              if (typeof data.onDelete === "function") {
+                data.onDelete(id);
               } else {
                 const deleteEvent = new CustomEvent("deleteNode", {
                   detail: { id },

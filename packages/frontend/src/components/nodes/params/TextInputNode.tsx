@@ -115,7 +115,7 @@ export default function TextInputNode(props: NodeProps<TextInputNodeType>) {
         setNodeValue(props.id, "");
       }
     }
-  }, [projectId, props.id, props.data?.value, setNodeResult]);
+  }, [projectId, props.id, props.data?.value, setNodeResult, setNodeValue]);
 
   // Sync data with backend (debounced)
   const syncWithBackend = useCallback(async (data: Record<string, unknown>) => {

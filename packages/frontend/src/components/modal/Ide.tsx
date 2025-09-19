@@ -125,7 +125,7 @@ const IdeModal: React.FC<IdeModalProps> = ({
       setSaveStatus("error");
       console.error("Error saving code:", error);
     }
-  }, [projectId, nodeId, nodeTitle]);
+  }, [projectId, nodeId, nodeTitle, nodeFile]);
 
   const handleRunCode = useCallback(async () => {
     if (!editorRef.current) return;
@@ -279,7 +279,7 @@ const IdeModal: React.FC<IdeModalProps> = ({
         },
       });
     },
-    [code, isLoadingCode, projectId, nodeId, nodeTitle, handleRunCode]
+    [code, isLoadingCode, handleRunCode]
   );
 
   if (!isOpen) return null;

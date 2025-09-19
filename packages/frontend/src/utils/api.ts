@@ -64,12 +64,13 @@ async function apiCall<T>(endpoint: string, options?: RequestInit): Promise<T> {
       if (contentType && contentType.includes("application/json")) {
         payload = await response.json();
         if (payload && typeof payload === "object") {
-          const detail = (payload as any).detail;
+          const { detail } = payload as { detail?: unknown };
           if (typeof detail === "string") {
             errorMessage = detail;
-          } else if (detail && typeof detail === "object") {
-            if (typeof detail.message === "string") {
-              errorMessage = detail.message;
+          } else if (detail && typeof detail === "object" && "message" in detail) {
+            const detailMessage = (detail as { message?: unknown }).message;
+            if (typeof detailMessage === "string") {
+              errorMessage = detailMessage;
             }
           }
         }

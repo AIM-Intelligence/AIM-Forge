@@ -14,7 +14,7 @@ export interface PortInfo {
   label: string;     // Display label
   type: string;      // Data type (float, int, str, etc.)
   required: boolean; // Whether required
-  default?: any;     // Default value
+  default?: unknown; // Default value
 }
 
 export interface NodeData {

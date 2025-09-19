@@ -13,6 +13,32 @@ import { type ComponentTemplate } from "../../config/componentLibrary";
 import { codeApi } from "../../utils/api";
 import { useExecutionStore } from "../../stores/executionStore";
 import { useNodeValueStore } from "../../stores/nodeValueStore";
+import type { PortInfo } from "../../types";
+import type { ReactFlowInstance } from "@xyflow/react";
+
+interface MetadataPort {
+  name: string;
+  type: string;
+  required?: boolean;
+  default?: unknown;
+}
+
+interface NodeMetadata {
+  inputs?: MetadataPort[];
+  outputs?: MetadataPort[];
+}
+
+function isMetadata(value: unknown): value is NodeMetadata {
+  if (typeof value !== "object" || value === null) return false;
+  const maybe = value as Record<string, unknown>;
+  const validArray = (arr: unknown): arr is MetadataPort[] =>
+    Array.isArray(arr) && arr.every((item) =>
+      typeof item === "object" && item !== null && typeof (item as MetadataPort).name === "string" && typeof (item as MetadataPort).type === "string"
+    );
+  const inputsValid = maybe.inputs === undefined || validArray(maybe.inputs);
+  const outputsValid = maybe.outputs === undefined || validArray(maybe.outputs);
+  return inputsValid && outputsValid;
+}
 
 export default function Project() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -20,7 +46,7 @@ export default function Project() {
   const setToastMessage = useExecutionStore((state) => state.setToastMessage);
   const clearResults = useExecutionStore((state) => state.clearResults);
   const loadFromLocalStorage = useNodeValueStore((state) => state.loadFromLocalStorage);
-  const reactFlowInstanceRef = useRef<any>(null);
+  const reactFlowInstanceRef = useRef<ReactFlowInstance | null>(null);
 
   // Load node values from localStorage when project loads
   useEffect(() => {
@@ -133,8 +159,8 @@ export default function Project() {
           const result = await response.json();
           
           // Get metadata for the new node to extract inputs/outputs
-          let inputs = undefined;
-          let outputs = undefined;
+          let inputs: PortInfo[] | undefined;
+          let outputs: PortInfo[] | undefined;
           
           try {
             const metadataResult = await codeApi.getNodeMetadata({
@@ -147,12 +173,12 @@ export default function Project() {
               }
             });
             
-            if (metadataResult.success && metadataResult.metadata) {
+            if (metadataResult.success && isMetadata(metadataResult.metadata)) {
               const metadata = metadataResult.metadata;
               
               // Convert metadata to port format
               if (metadata.inputs?.length > 0) {
-                inputs = metadata.inputs.map((input: any) => ({
+                inputs = metadata.inputs.map((input) => ({
                   id: input.name,
                   label: input.name,
                   type: input.type,
@@ -162,7 +188,7 @@ export default function Project() {
               }
               
               if (metadata.outputs?.length > 0) {
-                outputs = metadata.outputs.map((output: any) => ({
+                outputs = metadata.outputs.map((output) => ({
                   id: output.name,
                   label: output.name,
                   type: output.type,
@@ -181,13 +207,12 @@ export default function Project() {
           if (reactFlowInstanceRef.current) {
             const centerX = window.innerWidth / 2;
             const centerY = window.innerHeight / 2;
-            
-            // Convert screen center to flow coordinates
+
             position = reactFlowInstanceRef.current.screenToFlowPosition({
               x: centerX,
               y: centerY
             });
-            
+
             // Add small random offset to prevent exact overlap when adding multiple nodes
             position.x += (Math.random() - 0.5) * 50;
             position.y += (Math.random() - 0.5) * 50;
@@ -210,7 +235,7 @@ export default function Project() {
           };
           
           // Add node to React Flow
-          setNodes(currentNodes => [...currentNodes, newNode]);
+          setNodes((currentNodes) => [...currentNodes, newNode]);
         } else {
           console.error("Failed to create node from template");
         }
@@ -218,7 +243,7 @@ export default function Project() {
         console.error("Error creating node from template:", error);
       }
     },
-    [projectId, nodeIdCounter]
+    [projectId, nodeIdCounter, setNodeIdCounter, setNodes, handleNodeClick]
   );
 
   // Handle retry
@@ -281,14 +306,14 @@ export default function Project() {
               
               // Define excluded component types (for input components)
               const excludedComponentTypes = ['TextInput'];
-              const componentType = (node.data as any)?.componentType;
+              const componentType = node.data.componentType;
               if (componentType && excludedComponentTypes.includes(componentType)) {
                 return false;
               }
-              
+
               // Define excluded title patterns (as a safety net)
               const excludedTitlePatterns = ['Text Input', 'Start Node', 'Result Node'];
-              const title = (node.data as any)?.title || '';
+              const title = node.data.title ?? '';
               if (excludedTitlePatterns.some(pattern => title.includes(pattern))) {
                 return false;
               }

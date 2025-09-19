@@ -34,25 +34,28 @@ const HANDLE_OUTER_OFFSET = BORDER_WIDTH + HANDLE_GAP + DOT_DIAM;
 const ROW_H = Math.max(TEXT_LINE_H + TEXT_DESCENDER_PAD, DOT_DIAM);
 const ROW_GAP = Math.max(0, PORT_SPACING - ROW_H); // => ROW_H + ROW_GAP = PORT_SPACING
 
-export default function DefaultNode(props: NodeProps & { data: NodeData }) {
-  // Check if this is a special component type
-  const componentType = props.data?.componentType;
-  if (componentType && typeof componentType === 'string') {
+export default function DefaultNode(props: NodeProps<DefaultNodeType>) {
+  const { data } = props;
+  const componentType = data?.componentType;
+  if (componentType) {
     const SpecialComponent = getComponent(componentType);
     if (SpecialComponent) {
-      return <SpecialComponent {...props as any} />;
+      return <SpecialComponent {...props} />;
     }
   }
-  
-  // Legacy support: Check title for backward compatibility
-  if (props.data?.title?.startsWith("Text Input")) {
-    const TextInputComponent = getComponent('TextInput');
+
+  if (data?.title?.startsWith("Text Input")) {
+    const TextInputComponent = getComponent("TextInput");
     if (TextInputComponent) {
-      return <TextInputComponent {...props as any} />;
+      return <TextInputComponent {...props} />;
     }
   }
-  
-  // Default rendering for standard custom nodes
+
+  return <StandardNode {...props} />;
+}
+
+function StandardNode(props: NodeProps<DefaultNodeType>) {
+  const { data } = props;
   const [hovering, setHovering] = useState(false);
   const [modalState, setModalState] = useState<{
     isOpen: boolean;
@@ -67,9 +70,7 @@ export default function DefaultNode(props: NodeProps & { data: NodeData }) {
   });
 
   // Check execution error state
-  const nodeExecutionResult = useExecutionStore(
-    state => state.executionResults[props.id]
-  );
+  const nodeExecutionResult = useExecutionStore((state) => state.executionResults[props.id]);
   const hasError = nodeExecutionResult?.status === 'error';
 
   /** 실제 폰트 폭으로 라벨 너비 측정 */
@@ -79,12 +80,12 @@ export default function DefaultNode(props: NodeProps & { data: NodeData }) {
   
   useLayoutEffect(() => {
     // Log updates for debugging
-    if (props.data.updateKey) {
-      console.log(`Node ${props.id} re-measuring, updateKey: ${props.data.updateKey}`);
-      console.log('Inputs:', props.data.inputs);
-      console.log('Outputs:', props.data.outputs);
+    if (data.updateKey) {
+      console.log(`Node ${props.id} re-measuring, updateKey: ${data.updateKey}`);
+      console.log('Inputs:', data.inputs);
+      console.log('Outputs:', data.outputs);
     }
-    
+
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
     const font =
@@ -95,18 +96,18 @@ export default function DefaultNode(props: NodeProps & { data: NodeData }) {
       return Math.ceil(ctx.measureText(t).width) + 2; // 안전 마진
     };
 
-    if (props.data.inputs?.length) {
-      setInW(Math.max(30, ...props.data.inputs.map(i => measure(i.label))));
+    if (data.inputs?.length) {
+      setInW(Math.max(30, ...data.inputs.map((input) => measure(input.label))));
     } else setInW(0);
 
-    if (props.data.outputs?.length) {
-      setOutW(Math.max(30, ...props.data.outputs.map(o => measure(o.label))));
+    if (data.outputs?.length) {
+      setOutW(Math.max(30, ...data.outputs.map((output) => measure(output.label))));
     } else setOutW(0);
-    
+
     // Measure title width
-    const title = props.data.title || "Node";
+    const title = data.title || "Node";
     setTitleW(measure(title));
-  }, [props.data.inputs, props.data.outputs, props.data.title, props.data.updateKey]);
+  }, [data.inputs, data.outputs, data.title, data.updateKey, props.id]);
 
   /** 가로폭 계산 */
   const contentWidth = useMemo(() => {
@@ -118,8 +119,8 @@ export default function DefaultNode(props: NodeProps & { data: NodeData }) {
   }, [contentWidth]);
 
   /** 세로 높이: 좌/우 중 더 많은 쪽의 행 수를 기준 */
-  const ic = props.data.inputs?.length || 0;
-  const oc = props.data.outputs?.length || 0;
+  const ic = data.inputs?.length || 0;
+  const oc = data.outputs?.length || 0;
   const totalRows = Math.max(ic, oc, 1);
 
   const nodeHeight = useMemo(() => {
@@ -135,7 +136,7 @@ export default function DefaultNode(props: NodeProps & { data: NodeData }) {
     return Math.max(portBasedHeight, titleBasedHeight);
   }, [totalRows, titleW]);
 
-  const handleNodeClick = () => props.data.viewCode?.();
+  const handleNodeClick = () => data.viewCode?.();
 
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -221,7 +222,7 @@ export default function DefaultNode(props: NodeProps & { data: NodeData }) {
                 gap: `${ROW_GAP}px`,
               }}
             >
-              {props.data.inputs!.map((input) => (
+          {data.inputs!.map((input) => (
                 <div
                   key={`in-row-${input.id}`}
                   className="relative"
@@ -291,7 +292,7 @@ export default function DefaultNode(props: NodeProps & { data: NodeData }) {
                 gap: `${ROW_GAP}px`,
               }}
             >
-              {props.data.outputs!.map((output) => (
+              {data.outputs!.map((output) => (
                 <div
                   key={`out-row-${output.id}`}
                   className="relative"

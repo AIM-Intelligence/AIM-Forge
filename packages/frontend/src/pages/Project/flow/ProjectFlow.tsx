@@ -17,6 +17,7 @@ import {
   type OnNodesChange,
   type OnEdgesChange,
   type Node as FlowNode,
+  type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import type { NodeData } from "../../../types";
@@ -37,7 +38,7 @@ interface ProjectFlowProps {
   onEdgesChange: OnEdgesChange<Edge>;
   onConnect: (connection: Connection) => void;
   isValidConnection: (connection: Edge | Connection) => boolean;
-  onInit?: (reactFlowInstance: any) => void;
+  onInit?: (reactFlowInstance: ReactFlowInstance) => void;
   children?: ReactNode;
 }
 
@@ -92,14 +93,14 @@ function ProjectFlowInner({
   
   // Listen for custom event to update node internals
   useEffect(() => {
-    const handleUpdateNodeInternals = (event: CustomEvent) => {
-      const { nodeId } = event.detail;
+    const handleUpdateNodeInternals = (event: Event) => {
+      const { nodeId } = (event as CustomEvent<{ nodeId: string }>).detail;
       queueUpdateInternals(nodeId);
     };
-    
-    window.addEventListener('reactFlowUpdateNodeInternals' as any, handleUpdateNodeInternals);
+
+    window.addEventListener('reactFlowUpdateNodeInternals', handleUpdateNodeInternals as EventListener);
     return () => {
-      window.removeEventListener('reactFlowUpdateNodeInternals' as any, handleUpdateNodeInternals);
+      window.removeEventListener('reactFlowUpdateNodeInternals', handleUpdateNodeInternals as EventListener);
       if (rafRef.current) {
         cancelAnimationFrame(rafRef.current);
       }
@@ -132,10 +133,10 @@ function ProjectFlowInner({
   };
 
   return (
-    <ReactFlow
-        nodes={nodes as any}
+    <ReactFlow<AnyNodeType, Edge>
+        nodes={nodes}
         edges={edges}
-        onNodesChange={onNodesChange as any}
+        onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         nodeTypes={nodeTypes}

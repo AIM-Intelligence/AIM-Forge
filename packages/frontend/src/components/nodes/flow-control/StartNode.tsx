@@ -16,6 +16,47 @@ interface ExecutionResult {
   logs?: string;
 }
 
+interface FlowStartEvent {
+  type: 'start';
+  affected_nodes?: string[];
+  input_result_nodes?: string[];
+  total_nodes?: number;
+  execution_order?: string[];
+}
+
+interface FlowNodeCompleteEvent {
+  type: 'node_complete';
+  node_id?: string;
+  result?: ExecutionResult;
+  node_index?: number;
+  total_nodes?: number;
+  node_title?: string;
+}
+
+interface FlowCompleteEvent {
+  type: 'complete';
+  execution_results?: Record<string, ExecutionResult>;
+  result_nodes?: Record<string, unknown>;
+  execution_order?: string[];
+  total_execution_time_ms?: number;
+}
+
+interface FlowErrorEvent {
+  type: 'error';
+  error?: string;
+}
+
+type FlowStreamEvent = FlowStartEvent | FlowNodeCompleteEvent | FlowCompleteEvent | FlowErrorEvent;
+
+function toFlowEvent(event: unknown): FlowStreamEvent | null {
+  if (!event || typeof event !== 'object') return null;
+  const candidate = event as { type?: string };
+  if (candidate.type === 'start' || candidate.type === 'node_complete' || candidate.type === 'complete' || candidate.type === 'error') {
+    return candidate as FlowStreamEvent;
+  }
+  return null;
+}
+
 export type StartNodeType = Node<{
   title: string;
   description: string;
@@ -97,36 +138,35 @@ export default function StartNode(props: NodeProps<StartNodeType>) {
           timeout_sec: 30,
           halt_on_error: true,
         },
-        (event) => {
+        (rawEvent) => {
           const store = useExecutionStore.getState();
-          
+          const event = toFlowEvent(rawEvent);
+          if (!event) {
+            console.warn('Received unknown flow event:', rawEvent);
+            return;
+          }
+
           switch (event.type) {
-            case 'start':
-              // Set nodes in this pipeline as executing
-              const affectedNodes = (event as any).affected_nodes;
-              const inputResultNodes = (event as any).input_result_nodes || [];
-              
-              
-              if (affectedNodes) {
+            case 'start': {
+              const affectedNodes = event.affected_nodes ?? [];
+              const inputResultNodes = event.input_result_nodes ?? [];
+
+              if (affectedNodes.length > 0) {
                 store.setExecutingNodes(affectedNodes);
-                
-                // Only clear output Result nodes and non-Result nodes
-                // Preserve input Result nodes that are being used as inputs
-                const nodesToClear = affectedNodes.filter((nodeId: string) => 
-                  !inputResultNodes.includes(nodeId)
-                );
-                
-                store.clearNodeResults(nodesToClear);
+
+                const nodesToClear = affectedNodes.filter((nodeId) => !inputResultNodes.includes(nodeId));
+                if (nodesToClear.length > 0) {
+                  store.clearNodeResults(nodesToClear);
+                }
               }
-              
+
               store.setExecutionProgress(0, event.total_nodes || 0);
-              // Don't clear all results, only affected nodes are cleared above
-              // Get the current state AFTER clearing
+
               const currentState = useExecutionStore.getState();
-              
+
               store.setExecutionResults({
-                execution_results: currentState.executionResults,  // Keep existing results after clear
-                result_nodes: currentState.resultNodes,  // Keep existing results after clear
+                execution_results: currentState.executionResults,
+                result_nodes: currentState.resultNodes,
                 execution_order: event.execution_order || [],
                 total_execution_time_ms: 0,
                 run_id: newRunId,
@@ -134,58 +174,59 @@ export default function StartNode(props: NodeProps<StartNodeType>) {
               setModalState({
                 isOpen: true,
                 status: "loading",
-                message: `Executing ${event.total_nodes} nodes...`,
+                message: `Executing ${event.total_nodes || 0} nodes...`,
                 errorDetails: undefined,
               });
               break;
-              
-            case 'node_complete':
+            }
+
+            case 'node_complete': {
               if (event.node_id && event.result) {
-                store.updateNodeResult(event.node_id, event.result as ExecutionResult);
+                store.updateNodeResult(event.node_id, event.result);
                 store.setExecutionProgress(event.node_index || 0, event.total_nodes || 0);
-                
+
                 setModalState({
                   isOpen: true,
                   status: "loading",
-                  // message: `Running flow... (${event.node_index}/${event.total_nodes}) ${event.node_title || ''}`,
                   message: `Running flow... (${event.node_index}/${event.total_nodes})`,
                   errorDetails: undefined,
                 });
               }
               break;
-              
-            case 'complete':
-              // Clear executing nodes when complete
+            }
+
+            case 'complete': {
               store.setExecutingNodes([]);
-              
+
               if (event.execution_results && event.result_nodes) {
                 store.setExecutionResults({
-                  execution_results: event.execution_results as Record<string, ExecutionResult>,
-                  result_nodes: event.result_nodes as Record<string, unknown>,
+                  execution_results: event.execution_results,
+                  result_nodes: event.result_nodes,
                   execution_order: event.execution_order || [],
                   total_execution_time_ms: event.total_execution_time_ms || 0,
                   run_id: newRunId,
                 });
               }
-              
+
               const nodeCount = event.execution_order?.length || 0;
               const timeMs = event.total_execution_time_ms || 0;
-              
+
               setModalState({
                 isOpen: false,
                 status: "success",
                 message: "",
                 errorDetails: undefined,
               });
-              
+
               setToastMessage(`Flow executed successfully! (${nodeCount} nodes in ${timeMs}ms)`);
               setTimeout(() => setToastMessage(null), 3000);
-              
+
               setIsRunning(false);
               setExecuting(false);
               break;
-              
-            case 'error':
+            }
+
+            case 'error': {
               setModalState({
                 isOpen: true,
                 status: "error",
@@ -195,15 +236,17 @@ export default function StartNode(props: NodeProps<StartNodeType>) {
               setIsRunning(false);
               setExecuting(false);
               break;
+            }
           }
         },
         (error) => {
+          const message = error instanceof Error ? error.message : String(error);
           console.error('SSE error:', error);
           setModalState({
             isOpen: true,
             status: "error",
             message: "Flow execution failed",
-            errorDetails: error.message,
+            errorDetails: message,
           });
           setIsRunning(false);
           setExecuting(false);
