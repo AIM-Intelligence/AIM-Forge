@@ -19,7 +19,7 @@ export interface ComponentTemplate {
   icon: string;
   template: string;  // Template file name in backend
   category?: string;
-  nodeType?: "custom" | "start" | "result" | "textInput";
+  nodeType?: "custom" | "start" | "result" | "textInput" | "markdownNote";
   componentType?: string;  // For extensible component system
 }
 

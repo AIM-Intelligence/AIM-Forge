@@ -10,11 +10,11 @@ import { useProjectData } from "../../hooks/useProjectData";
 import { useNodeOperations } from "../../hooks/useNodeOperations";
 import { useEdgeOperations } from "../../hooks/useEdgeOperations";
 import { type ComponentTemplate } from "../../config/componentLibrary";
-import { codeApi } from "../../utils/api";
+import { codeApi, projectApi } from "../../utils/api";
 import { useExecutionStore } from "../../stores/executionStore";
 import { useNodeValueStore } from "../../stores/nodeValueStore";
-import type { PortInfo } from "../../types";
-import type { ReactFlowInstance } from "@xyflow/react";
+import type { NodeData, PortInfo } from "../../types";
+import type { Node as FlowNode, ReactFlowInstance } from "@xyflow/react";
 
 interface MetadataPort {
   name: string;
@@ -27,6 +27,8 @@ interface NodeMetadata {
   inputs?: MetadataPort[];
   outputs?: MetadataPort[];
 }
+
+type AnyNodeType = FlowNode<NodeData>;
 
 function isMetadata(value: unknown): value is NodeMetadata {
   if (typeof value !== "object" || value === null) return false;
@@ -128,6 +130,41 @@ export default function Project() {
     nodes,
   });
 
+  const handleMarkdownCommit = useCallback(
+    async (nodeId: string, content: string) => {
+      setNodes((currentNodes) =>
+        currentNodes.map((node) => {
+          if (node.id !== nodeId || node.type !== "markdownNote") {
+            return node;
+          }
+
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              content,
+            },
+          } satisfies AnyNodeType;
+        })
+      );
+
+      if (!projectId) {
+        return;
+      }
+
+      try {
+        await projectApi.updateNodeData({
+          project_id: projectId,
+          node_id: nodeId,
+          data: { content },
+        });
+      } catch (error) {
+        console.error(`Failed to persist markdown note ${nodeId}:`, error);
+      }
+    },
+    [projectId, setNodes]
+  );
+
   // Handle component library selection
   const handleComponentSelect = useCallback(
     async (component: ComponentTemplate) => {
@@ -157,25 +194,25 @@ export default function Project() {
 
         if (response.ok) {
           const result = await response.json();
-          
+
           // Get metadata for the new node to extract inputs/outputs
           let inputs: PortInfo[] | undefined;
           let outputs: PortInfo[] | undefined;
-          
+
           try {
             const metadataResult = await codeApi.getNodeMetadata({
               project_id: projectId,
               node_id: newNodeId,
-              node_data: { 
-                data: { 
-                  file: result.file_name || `${newNodeId}_${component.name.replace(/\s+/g, '_')}.py` 
-                } 
+              node_data: {
+                data: {
+                  file: result.file_name || `${newNodeId}_${component.name.replace(/\s+/g, '_')}.py`
+                }
               }
             });
-            
+
             if (metadataResult.success && isMetadata(metadataResult.metadata)) {
               const metadata = metadataResult.metadata;
-              
+
               // Convert metadata to port format
               if (metadata.inputs?.length > 0) {
                 inputs = metadata.inputs.map((input) => ({
@@ -186,7 +223,7 @@ export default function Project() {
                   default: input.default,
                 }));
               }
-              
+
               if (metadata.outputs?.length > 0) {
                 outputs = metadata.outputs.map((output) => ({
                   id: output.name,
@@ -200,10 +237,10 @@ export default function Project() {
           } catch (error) {
             console.error(`Failed to fetch metadata for new node:`, error);
           }
-          
+
           // Calculate position at viewport center
           let position = { x: 250, y: 100 }; // Default fallback
-          
+
           if (reactFlowInstanceRef.current) {
             const centerX = window.innerWidth / 2;
             const centerY = window.innerHeight / 2;
@@ -217,23 +254,62 @@ export default function Project() {
             position.x += (Math.random() - 0.5) * 50;
             position.y += (Math.random() - 0.5) * 50;
           }
-          
-          // Create new node without page refresh
-          const newNode = {
-            id: newNodeId,
-            type: component.nodeType || "custom",
-            position,
-            data: {
-              title: component.name,
-              description: component.description,
-              file: result.file_name || `${newNodeId}_${component.name.replace(/\s+/g, '_')}.py`,
-              viewCode: () => handleNodeClick(newNodeId, component.name, result.file_name || `${newNodeId}_${component.name.replace(/\s+/g, '_')}.py`),
-              inputs: inputs,
-              outputs: outputs,
-              componentType: component.componentType,  // Add componentType for extensible rendering
-            }
-          };
-          
+
+          let newNode: AnyNodeType;
+
+          if (component.componentType === "MarkdownNote" || component.nodeType === "markdownNote") {
+            newNode = {
+              id: newNodeId,
+              type: component.nodeType || "markdownNote",
+              position,
+              data: {
+                title: component.name,
+                description: component.description,
+                componentType: component.componentType,
+                content: "",
+                onCommit: (value: string) => {
+                  void handleMarkdownCommit(newNodeId, value);
+                },
+                onDelete: (nodeId: string) => {
+                  const deleteEvent = new CustomEvent("deleteNode", {
+                    detail: { id: nodeId },
+                    bubbles: true,
+                  });
+                  document.dispatchEvent(deleteEvent);
+                },
+              },
+            } satisfies AnyNodeType;
+          } else {
+            newNode = {
+              id: newNodeId,
+              type: component.nodeType || "custom",
+              position,
+              data: {
+                title: component.name,
+                description: component.description,
+                file: result.file_name || `${newNodeId}_${component.name.replace(/\s+/g, '_')}.py`,
+                viewCode: () => handleNodeClick(
+                  newNodeId,
+                  component.name,
+                  result.file_name || `${newNodeId}_${component.name.replace(/\s+/g, '_')}.py`
+                ),
+                inputs,
+                outputs,
+                componentType: component.componentType,
+              },
+            } satisfies AnyNodeType;
+          }
+
+          try {
+            await projectApi.updateNodePosition({
+              project_id: projectId,
+              node_id: newNodeId,
+              position,
+            });
+          } catch (positionError) {
+            console.error(`Failed to persist initial position for node ${newNodeId}:`, positionError);
+          }
+
           // Add node to React Flow
           setNodes((currentNodes) => [...currentNodes, newNode]);
         } else {
@@ -243,7 +319,7 @@ export default function Project() {
         console.error("Error creating node from template:", error);
       }
     },
-    [projectId, nodeIdCounter, setNodeIdCounter, setNodes, handleNodeClick]
+    [projectId, nodeIdCounter, setNodeIdCounter, setNodes, handleNodeClick, handleMarkdownCommit]
   );
 
   // Handle retry

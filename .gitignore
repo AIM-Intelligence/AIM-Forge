@@ -12,6 +12,7 @@ CLAUDE.local.md
 AGENTS.md
 
 .uv-cache/
+.pnpm-store
 
 check_formatted.json
 check_formatted.py
