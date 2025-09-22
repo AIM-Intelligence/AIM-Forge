@@ -7,12 +7,16 @@ from typing import List, Dict, Any
 from .projects_registry import (
     add_project_to_registry,
     remove_project_from_registry,
-    get_projects_registry
+    get_projects_registry,
 )
 from . import venv_manager
 
 # Get absolute path to projects directory
-PROJECTS_BASE_PATH = Path(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))) / "projects"
+PROJECTS_BASE_PATH = (
+    Path(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))) / "projects"
+)
+PROJECT_TEMPLATES_PATH = Path(__file__).resolve().parents[1] / "resources" / "projects"
+DEFAULT_PROJECT_TEMPLATE = "example_project"
 BASE_REQUIREMENTS_FILE = Path(__file__).resolve().parents[2] / "base_requirements.txt"
 
 
@@ -30,29 +34,89 @@ def _load_base_requirements() -> List[str]:
             requirements.append(candidate)
     return requirements
 
+
 def ensure_projects_dir() -> None:
     """Ensure the projects directory exists"""
     PROJECTS_BASE_PATH.mkdir(exist_ok=True)
 
+
 def get_all_projects() -> List[Dict[str, str]]:
     """Get all projects from the projects registry"""
     registry = get_projects_registry()
+    registry = _initialize_default_projects_if_needed(registry)
     return registry["projects"]
 
-def create_project(project_name: str, project_description: str, project_id: str) -> Dict[str, Any]:
+
+def _initialize_default_projects_if_needed(registry: Dict[str, Any]) -> Dict[str, Any]:
+    """Ensure the default example project exists when registry is empty."""
+    projects = registry.get("projects", [])
+    if projects:
+        return registry
+
+    example_template = PROJECT_TEMPLATES_PATH / DEFAULT_PROJECT_TEMPLATE
+    template_structure = example_template / "structure.json"
+    if not template_structure.exists():
+        return registry
+
+    project_name = "Example Pipelines"
+    project_description = "A quick-start project with example pipelines."
+    project_id = "example_project"
+    project_path = PROJECTS_BASE_PATH / project_id
+
+    created_via_helper = False
+    try:
+        if not project_path.exists():
+            create_project(project_name, project_description, project_id)
+            created_via_helper = True
+        else:
+            ensure_projects_dir()
+    except ValueError:
+        # Project already exists; continue to ensure registry and structure are set up.
+        pass
+
+    try:
+        project_path.mkdir(exist_ok=True)
+        for item in example_template.iterdir():
+            if item.name == ".venv":
+                continue
+            destination = project_path / item.name
+            if item.is_dir():
+                shutil.copytree(item, destination, dirs_exist_ok=True)
+            else:
+                shutil.copy2(item, destination)
+    except OSError as error:
+        print(f"Failed to initialize example project assets: {error}")
+
+    updated_registry = get_projects_registry()
+    if not any(
+        project.get("project_id") == project_id
+        for project in updated_registry.get("projects", [])
+    ):
+        try:
+            add_project_to_registry(project_name, project_description, project_id)
+            updated_registry = get_projects_registry()
+        except ValueError:
+            pass
+
+    return updated_registry
+
+
+def create_project(
+    project_name: str, project_description: str, project_id: str
+) -> Dict[str, Any]:
     """Create a new project folder and json file"""
     ensure_projects_dir()
     project_path = PROJECTS_BASE_PATH / project_id
-    
+
     if project_path.exists():
         raise ValueError(f"Project '{project_name}' already exists")
-    
+
     # Add to registry first (will raise error if already exists)
     add_project_to_registry(project_name, project_description, project_id)
-    
+
     try:
         project_path.mkdir(exist_ok=True)
-        
+
         # Create empty project json with initial structure matching ReactFlow format
         project_json_path = project_path / "structure.json"
         initial_structure = {
@@ -60,10 +124,10 @@ def create_project(project_name: str, project_description: str, project_id: str)
             "project_description": project_description or "",
             "project_id": project_id,
             "nodes": [],
-            "edges": []
+            "edges": [],
         }
-        
-        with open(project_json_path, 'w') as f:
+
+        with open(project_json_path, "w") as f:
             json.dump(initial_structure, f, indent=2)
 
         # Initialize isolated virtual environment for the project
@@ -88,7 +152,8 @@ def create_project(project_name: str, project_description: str, project_id: str)
             pass
         raise e
 
-def delete_project(project_name: str, project_id:str) -> Dict[str, Any]:
+
+def delete_project(project_name: str, project_id: str) -> Dict[str, Any]:
     """Delete entire project folder including venv and remove from registry"""
     ensure_projects_dir()
     project_path = PROJECTS_BASE_PATH / project_id
@@ -105,28 +170,30 @@ def delete_project(project_name: str, project_id:str) -> Dict[str, Any]:
 
     # Delete folder
     shutil.rmtree(project_path)
-    
+
     # Remove from registry
     try:
         remove_project_from_registry(project_name, project_id)
     except ValueError:
         # Project might not be in registry if it was created before registry system
         pass
-    
+
     return {
         "success": True,
-        "message": f"Project '{project_name}' deleted successfully"
+        "message": f"Project '{project_name}' deleted successfully",
     }
+
 
 def get_project_path(project_id: str) -> Path:
     """Get the path to a project directory using project_id"""
     ensure_projects_dir()
     project_path = PROJECTS_BASE_PATH / project_id
-    
+
     if not project_path.exists():
         raise ValueError(f"Project with ID '{project_id}' does not exist")
-    
+
     return project_path
+
 
 def get_project_id_by_name(project_name: str) -> str:
     """Get project_id from project_name using the registry"""

@@ -7,7 +7,7 @@ import type { Edge, MarkerType } from "@xyflow/react";
  */
 export function transformNodeToReactFlow(
   node: ProjectNode,
-  onNodeClick: (nodeId: string, title: string) => void
+  onNodeClick: (nodeId: string, title: string, file?: string) => void
 ): DefaultNodeType {
   return {
     id: node.id,
@@ -18,7 +18,7 @@ export function transformNodeToReactFlow(
       description: node.data.description || "",
       file: node.data.file,
       viewCode: () => {
-        onNodeClick(node.id, node.data.title || `Node ${node.id}`);
+        onNodeClick(node.id, node.data.title || `Node ${node.id}`, node.data.file);
       },
     },
   };

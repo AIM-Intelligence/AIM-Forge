@@ -16,20 +16,20 @@ import {
   type Connection,
   type OnNodesChange,
   type OnEdgesChange,
+  type Node as FlowNode,
+  type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import type { DefaultNodeType } from "../../../components/nodes/DefaultNode";
-import type { StartNodeType } from "../../../components/nodes/flow-control/StartNode";
-import type { ResultNodeType } from "../../../components/nodes/flow-control/ResultNode";
-import type { TextInputNodeType } from "../../../components/nodes/params/TextInputNode";
+import type { NodeData } from "../../../types";
 import DefaultNode from "../../../components/nodes/DefaultNode";
 import StartNode from "../../../components/nodes/flow-control/StartNode";
 import ResultNode from "../../../components/nodes/flow-control/ResultNode";
 import TextInputNode from "../../../components/nodes/params/TextInputNode";
+import MarkdownNoteNode from "../../../components/nodes/annotations/MarkdownNoteNode";
 import DefaultEdge from "../../../components/edges/DefaultEdge";
 
-// Union type for all node types
-type AnyNodeType = DefaultNodeType | StartNodeType | ResultNodeType | TextInputNodeType;
+// Treat all nodes as generic React Flow nodes for this view
+type AnyNodeType = FlowNode<NodeData>;
 
 interface ProjectFlowProps {
   nodes: AnyNodeType[];
@@ -38,7 +38,7 @@ interface ProjectFlowProps {
   onEdgesChange: OnEdgesChange<Edge>;
   onConnect: (connection: Connection) => void;
   isValidConnection: (connection: Edge | Connection) => boolean;
-  onInit?: (reactFlowInstance: any) => void;
+  onInit?: (reactFlowInstance: ReactFlowInstance) => void;
   children?: ReactNode;
 }
 
@@ -93,14 +93,14 @@ function ProjectFlowInner({
   
   // Listen for custom event to update node internals
   useEffect(() => {
-    const handleUpdateNodeInternals = (event: CustomEvent) => {
-      const { nodeId } = event.detail;
+    const handleUpdateNodeInternals = (event: Event) => {
+      const { nodeId } = (event as CustomEvent<{ nodeId: string }>).detail;
       queueUpdateInternals(nodeId);
     };
-    
-    window.addEventListener('reactFlowUpdateNodeInternals' as any, handleUpdateNodeInternals);
+
+    window.addEventListener('reactFlowUpdateNodeInternals', handleUpdateNodeInternals as EventListener);
     return () => {
-      window.removeEventListener('reactFlowUpdateNodeInternals' as any, handleUpdateNodeInternals);
+      window.removeEventListener('reactFlowUpdateNodeInternals', handleUpdateNodeInternals as EventListener);
       if (rafRef.current) {
         cancelAnimationFrame(rafRef.current);
       }
@@ -114,6 +114,7 @@ function ProjectFlowInner({
       start: StartNode,
       result: ResultNode,
       textInput: TextInputNode,
+      markdownNote: MarkdownNoteNode,
     }),
     []
   );
@@ -132,10 +133,10 @@ function ProjectFlowInner({
   };
 
   return (
-    <ReactFlow
-        nodes={nodes as any}
+    <ReactFlow<AnyNodeType, Edge>
+        nodes={nodes}
         edges={edges}
-        onNodesChange={onNodesChange as any}
+        onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         nodeTypes={nodeTypes}

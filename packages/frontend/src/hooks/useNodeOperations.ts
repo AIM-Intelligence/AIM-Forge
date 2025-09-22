@@ -6,15 +6,33 @@ import {
   type OnNodesChange,
   type OnEdgesChange,
   type NodeChange,
+  type Edge,
+  type Node as FlowNode,
+  type ReactFlowInstance,
 } from "@xyflow/react";
-import type { Edge } from "@xyflow/react";
 import { projectApi } from "../utils/api";
-import type { DefaultNodeType } from "../components/nodes/DefaultNode";
-import type { StartNodeType } from "../components/nodes/flow-control/StartNode";
-import type { ResultNodeType } from "../components/nodes/flow-control/ResultNode";
+import type { NodeData, PortInfo } from "../types";
 
-// Union type for all node types
-type AnyNodeType = DefaultNodeType | StartNodeType | ResultNodeType;
+// Treat all React Flow nodes uniformly for operations
+type AnyNodeType = FlowNode<NodeData>;
+
+interface PortMetadata {
+  name: string;
+  type?: string;
+  required?: boolean;
+  default?: unknown;
+}
+
+interface NodePortsMetadata {
+  inputs?: PortMetadata[];
+  outputs?: PortMetadata[];
+  mode?: "basic" | "script" | string;
+}
+
+type UpdateNodePortsEvent = CustomEvent<{
+  nodeId: string;
+  metadata: NodePortsMetadata;
+}>;
 
 interface UseNodeOperationsProps {
   projectId: string | undefined;
@@ -22,8 +40,9 @@ interface UseNodeOperationsProps {
   initialEdges: Edge[];
   nodeIdCounter: number;
   setNodeIdCounter: React.Dispatch<React.SetStateAction<number>>;
-  onNodeClick: (nodeId: string, title: string) => void;
-  reactFlowInstance?: React.MutableRefObject<any>;
+  onNodeClick: (nodeId: string, title: string, file?: string) => void;
+  reactFlowInstance?: React.MutableRefObject<ReactFlowInstance | null>;
+  onNodePositionUpdate?: (nodeId: string, position: { x: number; y: number }) => void;
 }
 
 interface UseNodeOperationsReturn {
@@ -48,9 +67,10 @@ export function useNodeOperations({
   setNodeIdCounter,
   onNodeClick,
   reactFlowInstance,
+  onNodePositionUpdate,
 }: UseNodeOperationsProps): UseNodeOperationsReturn {
   const [nodes, setNodes, onNodesChangeInternal] =
-    useNodesState<AnyNodeType>(initialNodes as any);
+    useNodesState<AnyNodeType>(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>(initialEdges);
   const positionUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastPortUpdateRef = useRef<{ nodeId: string; timestamp: number; hash: string } | null>(null);
@@ -74,8 +94,8 @@ export function useNodeOperations({
 
   // Listen for node port updates
   useEffect(() => {
-    const handleUpdateNodePorts = (event: CustomEvent) => {
-      const { nodeId, metadata } = event.detail;
+    const handleUpdateNodePorts = (event: Event) => {
+      const { nodeId, metadata } = (event as UpdateNodePortsEvent).detail;
       
       // Deduplicate events - ignore if same update within 100ms
       const eventHash = JSON.stringify({ nodeId, inputs: metadata.inputs, outputs: metadata.outputs });
@@ -93,25 +113,25 @@ export function useNodeOperations({
       console.log("Processing updateNodePorts event:", { nodeId, metadata });
       
       // Process metadata
-      const hasValidInputs = metadata.inputs && Array.isArray(metadata.inputs) && metadata.inputs.length > 0;
-      const hasValidOutputs = metadata.outputs && Array.isArray(metadata.outputs) && metadata.outputs.length > 0;
+      const hasValidInputs = Array.isArray(metadata.inputs) && metadata.inputs.length > 0;
+      const hasValidOutputs = Array.isArray(metadata.outputs) && metadata.outputs.length > 0;
       
       if (!hasValidInputs && !hasValidOutputs) {
         return; // Nothing to update
       }
       
-      const newInputs = hasValidInputs ? metadata.inputs : [];
-      const newOutputs = hasValidOutputs ? metadata.outputs : [];
+      const newInputs: PortMetadata[] = hasValidInputs ? metadata.inputs ?? [] : [];
+      const newOutputs: PortMetadata[] = hasValidOutputs ? metadata.outputs ?? [] : [];
       
       // Get current node to see old ports
-      let oldInputs: any[] = [];
-      let oldOutputs: any[] = [];
+      let oldInputs: PortInfo[] = [];
+      let oldOutputs: PortInfo[] = [];
       
       setNodes((currentNodes) => {
         const node = currentNodes.find(n => n.id === nodeId);
         if (node?.data) {
-          oldInputs = (node.data as any).inputs || [];
-          oldOutputs = (node.data as any).outputs || [];
+          oldInputs = node.data.inputs ?? [];
+          oldOutputs = node.data.outputs ?? [];
         }
         return currentNodes; // Return unchanged
       });
@@ -122,30 +142,30 @@ export function useNodeOperations({
       
       // Map by position when counts match (use name as both old and new ID)
       if (oldInputs.length === newInputs.length) {
-        oldInputs.forEach((old, i) => {
-          if (newInputs[i]) {
-            // Map from old id to new name (which becomes the new id)
-            inputMapping.set(old.id, newInputs[i].name);
+        oldInputs.forEach((oldPort, index) => {
+          const nextPort = newInputs[index];
+          if (nextPort) {
+            inputMapping.set(oldPort.id, nextPort.name);
           }
         });
       } else if (newInputs.length === 1 && oldInputs.length > 0) {
-        // If only one new input, map all old to it
-        oldInputs.forEach(old => {
-          inputMapping.set(old.id, newInputs[0].name);
+        const targetName = newInputs[0]!.name;
+        oldInputs.forEach((oldPort) => {
+          inputMapping.set(oldPort.id, targetName);
         });
       }
-      
+
       if (oldOutputs.length === newOutputs.length) {
-        oldOutputs.forEach((old, i) => {
-          if (newOutputs[i]) {
-            // Map from old id to new name (which becomes the new id)
-            outputMapping.set(old.id, newOutputs[i].name);
+        oldOutputs.forEach((oldPort, index) => {
+          const nextPort = newOutputs[index];
+          if (nextPort) {
+            outputMapping.set(oldPort.id, nextPort.name);
           }
         });
       } else if (newOutputs.length === 1 && oldOutputs.length > 0) {
-        // If only one new output, map all old to it
-        oldOutputs.forEach(old => {
-          outputMapping.set(old.id, newOutputs[0].name);
+        const targetName = newOutputs[0]!.name;
+        oldOutputs.forEach((oldPort) => {
+          outputMapping.set(oldPort.id, targetName);
         });
       }
       
@@ -153,50 +173,57 @@ export function useNodeOperations({
       const relinks: Relink[] = [];
       
       // Prepare the new nodes data
-      const nextNodesProducer = (nodes: AnyNodeType[]) => {
-        return nodes.map((node) => {
-          if (node.id === nodeId) {
-            console.log(`Updating node ${nodeId} with metadata:`, metadata);
-            
-            const inputs = hasValidInputs 
-              ? metadata.inputs.map((input: any) => ({
-                  id: input.name, // ID is set to name value - this is what Handle will use
-                  label: input.name,
-                  type: input.type,
-                  required: input.required !== false,
-                  default: input.default,
-                }))
-              : (node.data as any).inputs;
-            
-            const outputs = hasValidOutputs
-              ? metadata.outputs.map((output: any) => ({
-                  id: output.name, // ID is set to name value - this is what Handle will use
-                  label: output.name,
-                  type: output.type,
-                  required: false,
-                  default: undefined,
-                }))
-              : (node.data as any).outputs;
-            
-            return {
-              ...node,
-              data: {
-                ...node.data,
-                mode: metadata.mode || (node.data as any).mode,
-                inputs: inputs,
-                outputs: outputs,
-                updateKey: Date.now(), // Force re-render
-              },
-            };
+      const nextNodesProducer = (nodesList: AnyNodeType[]) =>
+        nodesList.map((node) => {
+          if (node.id !== nodeId) {
+            return node;
           }
-          return node;
+
+          console.log(`Updating node ${nodeId} with metadata:`, metadata);
+
+          const inputs = hasValidInputs
+            ? (metadata.inputs ?? []).map((input) => ({
+                id: input.name,
+                label: input.name,
+                type: input.type ?? "unknown",
+                required: input.required !== false,
+                default: input.default,
+              }))
+            : node.data.inputs;
+
+          const outputs = hasValidOutputs
+            ? (metadata.outputs ?? []).map((output) => ({
+                id: output.name,
+                label: output.name,
+                type: output.type ?? "unknown",
+                required: false,
+                default: undefined,
+              }))
+            : node.data.outputs;
+
+          const normalizedMode = metadata.mode;
+          const nextMode: NodeData['mode'] = normalizedMode === 'basic' || normalizedMode === 'script'
+            ? normalizedMode
+            : normalizedMode === 'unknown'
+              ? 'unknown'
+              : node.data.mode;
+
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              mode: nextMode,
+              inputs,
+              outputs,
+              updateKey: Date.now(),
+            },
+          };
         });
-      };
       
       // Phase 1: Neutralize edges (remove handles that will be remapped)
-      const nextEdgesPhase1 = (edges: Edge[]) => {
-        return edges.map((edge) => {
-          let updatedEdge = { ...edge };
+      const nextEdgesPhase1 = (edgeList: Edge[]) => {
+        return edgeList.map((edge) => {
+          const updatedEdge: Edge = { ...edge };
           
           // Check target handle
           if (edge.target === nodeId && edge.targetHandle) {
@@ -212,7 +239,7 @@ export function useNodeOperations({
               updatedEdge.targetHandle = undefined;
             } else if (!newHandle) {
               // Check if handle already exists in new inputs
-              const alreadyValid = newInputs.some((input: any) => input.name === edge.targetHandle);
+              const alreadyValid = newInputs.some((input) => input.name === edge.targetHandle);
               if (!alreadyValid) {
                 console.warn(`Edge ${edge.id} has unmapped target handle: ${edge.targetHandle}`);
                 updatedEdge.targetHandle = undefined;
@@ -234,7 +261,7 @@ export function useNodeOperations({
               updatedEdge.sourceHandle = undefined;
             } else if (!newHandle) {
               // Check if handle already exists in new outputs
-              const alreadyValid = newOutputs.some((output: any) => output.name === edge.sourceHandle);
+              const alreadyValid = newOutputs.some((output) => output.name === edge.sourceHandle);
               if (!alreadyValid) {
                 console.warn(`Edge ${edge.id} has unmapped source handle: ${edge.sourceHandle}`);
                 updatedEdge.sourceHandle = undefined;
@@ -297,22 +324,24 @@ export function useNodeOperations({
             
             // Update backend with edge changes
             if (projectId) {
-              relinks.forEach(relink => {
-                // Find the edge to get both handles
-                setEdges((edges) => {
-                  const edge = edges.find(e => e.id === relink.edgeId);
-                  if (edge) {
-                    projectApi.updateEdge({
+              setEdges((currentEdges) => {
+                relinks.forEach((relink) => {
+                  const updated = currentEdges.find((edge) => edge.id === relink.edgeId);
+                  if (!updated) return;
+
+                  projectApi
+                    .updateEdge({
                       project_id: projectId,
-                      edge_id: edge.id,
-                      source_handle: edge.sourceHandle,
-                      target_handle: edge.targetHandle,
-                    }).catch(error => {
-                      console.error(`Failed to update edge ${edge.id} in backend:`, error);
+                      edge_id: updated.id,
+                      source_handle: updated.sourceHandle,
+                      target_handle: updated.targetHandle,
+                    })
+                    .catch((apiError) => {
+                      console.error(`Failed to update edge ${updated.id} in backend:`, apiError);
                     });
-                  }
-                  return edges; // Return unchanged
                 });
+
+                return currentEdges;
               });
             }
           }
@@ -320,9 +349,9 @@ export function useNodeOperations({
       });
     };
 
-    window.addEventListener("updateNodePorts" as any, handleUpdateNodePorts);
+    window.addEventListener("updateNodePorts", handleUpdateNodePorts as EventListener);
     return () => {
-      window.removeEventListener("updateNodePorts" as any, handleUpdateNodePorts);
+      window.removeEventListener("updateNodePorts", handleUpdateNodePorts as EventListener);
     };
   }, [setNodes, setEdges, projectId]);
 
@@ -330,12 +359,20 @@ export function useNodeOperations({
   const onNodesChange = useCallback<OnNodesChange<AnyNodeType>>(
     (changes: NodeChange<AnyNodeType>[]) => {
       // Apply changes to local state first
-      onNodesChangeInternal(changes as any);
+      onNodesChangeInternal(changes);
 
       // Check if any position changes occurred
       const positionChanges = changes.filter(
         (change) => change.type === "position" && change.dragging === false
       );
+
+      if (positionChanges.length > 0) {
+        positionChanges.forEach((change) => {
+          if (onNodePositionUpdate && change.type === "position" && change.position) {
+            onNodePositionUpdate(change.id, change.position);
+          }
+        });
+      }
 
       if (positionChanges.length > 0 && projectId) {
         // Clear existing timeout
@@ -353,14 +390,15 @@ export function useNodeOperations({
                   node_id: change.id,
                   position: change.position,
                 });
-              } catch (error) {
+              } catch (apiError) {
+                console.error(`Failed to update position for node ${change.id}:`, apiError);
               }
             }
           });
         }, 500); // Wait 500ms after drag ends before updating
       }
     },
-    [onNodesChangeInternal, projectId]
+    [onNodesChangeInternal, onNodePositionUpdate, projectId]
   );
 
   // Add new node
@@ -421,7 +459,7 @@ export function useNodeOperations({
                 file: response.node.data.file,
                 viewCode: () => onNodeClick(nodeId, nodeData.title),
               },
-            } as DefaultNodeType;
+            } satisfies AnyNodeType;
           } else if (nodeData.nodeType === "start") {
             // Create StartNode without viewCode
             newNode = {
@@ -433,7 +471,7 @@ export function useNodeOperations({
                 description: nodeData.description,
                 file: response.node.data.file,
               },
-            } as StartNodeType;
+            } satisfies AnyNodeType;
           } else {
             // Create ResultNode without viewCode or file
             newNode = {
@@ -444,7 +482,7 @@ export function useNodeOperations({
                 title: nodeData.title,
                 description: nodeData.description,
               },
-            } as ResultNodeType;
+            } satisfies AnyNodeType;
           }
 
           setNodes((nds) => [...nds, newNode]);

@@ -7,6 +7,10 @@ interface DeleteCheckProps {
   onConfirm: () => void;
   projectName: string;
   isDeleting?: boolean;
+  title?: string;
+  description?: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
 }
 
 const DeleteCheck: React.FC<DeleteCheckProps> = ({
@@ -15,6 +19,10 @@ const DeleteCheck: React.FC<DeleteCheckProps> = ({
   onConfirm,
   projectName,
   isDeleting = false,
+  title = "Delete Project",
+  description = "Do you really want to delete this project?",
+  confirmLabel = "Delete",
+  cancelLabel = "Cancel",
 }) => {
   if (!isOpen) return null;
 
@@ -54,13 +62,11 @@ const DeleteCheck: React.FC<DeleteCheckProps> = ({
 
         {/* Title */}
         <h2 className="text-white text-xl font-semibold text-center mb-2">
-          Delete Project
+          {title}
         </h2>
 
         {/* Message */}
-        <p className="text-neutral-300 text-center mb-2">
-          Do you really want to delete this project?
-        </p>
+        <p className="text-neutral-300 text-center mb-2">{description}</p>
         <p className="text-neutral-400 text-sm text-center mb-6">
           <span className="font-semibold text-white">{projectName}</span> will
           be permanently deleted.
@@ -73,7 +79,7 @@ const DeleteCheck: React.FC<DeleteCheckProps> = ({
             disabled={isDeleting}
             className="flex-1 px-4 py-2 bg-neutral-700 text-white rounded-lg hover:bg-neutral-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Cancel
+            {cancelLabel}
           </button>
           <button
             onClick={onConfirm}
@@ -86,7 +92,7 @@ const DeleteCheck: React.FC<DeleteCheckProps> = ({
                 Deleting...
               </>
             ) : (
-              "Delete"
+              confirmLabel
             )}
           </button>
         </div>

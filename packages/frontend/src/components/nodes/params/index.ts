@@ -13,7 +13,7 @@ export const paramsComponents = [
   {
     id: "text-input",
     name: "Text Input",
-    description: "Persistent text input for API keys, paths, etc.",
+    description: "Persistent text input parameter",
     icon: "📝",
     template: "params/text_input",
     nodeType: "custom",

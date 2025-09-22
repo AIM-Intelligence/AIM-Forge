@@ -5,7 +5,7 @@ interface Xprops {
 export default function X({ onClose }: Xprops) {
   return (
     <button
-      className="bg-transparent border-none text-white cursor-pointer p-2 flex items-center justify-center rounded transition-all duration-200 ease-in-out active:scale-95"
+      className="p-2 rounded-lg text-neutral-400 hover:text-red-400 hover:bg-red-500/10 focus:outline-none focus:ring-2 focus:ring-red-500/30 transition-all duration-200 ease-in-out cursor-pointer flex items-center justify-center active:scale-95"
       onClick={onClose}
       aria-label="Close modal"
     >

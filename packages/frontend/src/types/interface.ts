@@ -14,14 +14,14 @@ export interface PortInfo {
   label: string;     // Display label
   type: string;      // Data type (float, int, str, etc.)
   required: boolean; // Whether required
-  default?: any;     // Default value
+  default?: unknown; // Default value
 }
 
 export interface NodeData {
   title: string;
   description?: string;
   file?: string;
-  mode?: "basic" | "script";  // Node mode
+  mode?: "basic" | "script" | "unknown";  // Node mode
   inputs?: PortInfo[];         // Input ports
   outputs?: PortInfo[];        // Output ports
   viewCode?: () => void;       // Handler for view code button
@@ -223,6 +223,33 @@ export interface DeleteEdgeRequest {
 export interface DeleteEdgeResponse {
   success: boolean;
   message: string;
+}
+
+
+// ==================== User Component Templates ====================
+
+export interface UserComponentPortMetadata {
+  name: string;
+  type: string;
+  required?: boolean;
+  default?: unknown;
+}
+
+export interface UserComponentMetadataDetail {
+  inputs?: UserComponentPortMetadata[];
+  outputs?: UserComponentPortMetadata[];
+  tags?: string[];
+}
+
+export interface UserComponentMetadata {
+  id: string;
+  name: string;
+  description?: string | null;
+  created_at: string;
+  updated_at: string;
+  author_id: string;
+  project_id?: string | null;
+  metadata: UserComponentMetadataDetail;
 }
 
 // ==================== Package Management ====================

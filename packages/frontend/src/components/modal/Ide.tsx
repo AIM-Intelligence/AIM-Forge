@@ -4,8 +4,10 @@ import type { editor } from "monaco-editor";
 import type * as Monaco from "monaco-editor";
 import SimpleExportButton from "../buttons/ide/SimpleExportButton";
 import LoadingModal from "./LoadingModal";
-import { codeApi } from "../../utils/api";
+import { codeApi, userComponentApi, ApiError } from "../../utils/api";
+import type { UserComponentMetadataDetail } from "../../types";
 import X from "../buttons/modal/x";
+import { useExecutionStore } from "../../stores/executionStore";
 
 interface IdeModalProps {
   isOpen: boolean;
@@ -15,6 +17,28 @@ interface IdeModalProps {
   nodeTitle: string;
   nodeFile?: string;
   initialCode?: string;
+}
+
+interface MetadataPort {
+  name: string;
+  type: string;
+  required?: boolean;
+  default?: unknown;
+}
+
+interface NodeMetadata {
+  inputs?: MetadataPort[];
+  outputs?: MetadataPort[];
+}
+
+function isMetadata(value: unknown): value is NodeMetadata {
+  if (typeof value !== "object" || value === null) return false;
+  const record = value as Record<string, unknown>;
+  const inputs = record.inputs;
+  const outputs = record.outputs;
+  if (inputs !== undefined && !Array.isArray(inputs)) return false;
+  if (outputs !== undefined && !Array.isArray(outputs)) return false;
+  return true;
 }
 
 const IdeModal: React.FC<IdeModalProps> = ({
@@ -38,28 +62,12 @@ const IdeModal: React.FC<IdeModalProps> = ({
     "loading"
   );
   const [runResult, setRunResult] = useState<string>("");
-  const [nodeMetadata, setNodeMetadata] = useState<any>(null);
-
-  // Fetch metadata
-  const fetchMetadata = useCallback(async () => {
-    if (!projectId || !nodeId) return;
-
-    try {
-      // Use the actual file name from node data if available
-      const fileName = nodeFile || `${nodeId}_${nodeTitle.replace(/\s+/g, '_')}.py`;
-      const result = await codeApi.getNodeMetadata({
-        project_id: projectId,
-        node_id: nodeId,
-        node_data: { data: { file: fileName } }
-      });
-
-      if (result.success && result.metadata) {
-        setNodeMetadata(result.metadata);
-      }
-    } catch (error) {
-      console.error("Error fetching metadata:", error);
-    }
-  }, [projectId, nodeId]);
+  const [isSaveComponentModalOpen, setIsSaveComponentModalOpen] = useState(false);
+  const [componentName, setComponentName] = useState(nodeTitle);
+  const [componentDescription, setComponentDescription] = useState("");
+  const [componentError, setComponentError] = useState<string | null>(null);
+  const [isSavingComponent, setIsSavingComponent] = useState(false);
+  const setToastMessage = useExecutionStore((state) => state.setToastMessage);
 
   // Fetch code from backend when modal opens
   const fetchCode = useCallback(async () => {
@@ -116,10 +124,7 @@ const IdeModal: React.FC<IdeModalProps> = ({
             node_data: { data: { file: fileName } }
           });
           
-          if (metadataResult.success && metadataResult.metadata) {
-            setNodeMetadata(metadataResult.metadata);
-            console.log("Metadata fetched after save:", metadataResult.metadata);
-            
+          if (metadataResult.success && metadataResult.metadata) {            
             // Emit custom event to update node ports in the flow with slight delay
             setTimeout(() => {
               const updateEvent = new CustomEvent("updateNodePorts", {
@@ -130,7 +135,6 @@ const IdeModal: React.FC<IdeModalProps> = ({
                 },
                 bubbles: true,
               });
-              console.log("Dispatching updateNodePorts event:", updateEvent.detail);
               window.dispatchEvent(updateEvent);
             }, 100); // Small delay to ensure save is fully processed
           } else {
@@ -148,7 +152,7 @@ const IdeModal: React.FC<IdeModalProps> = ({
       setSaveStatus("error");
       console.error("Error saving code:", error);
     }
-  }, [projectId, nodeId, nodeTitle]);
+  }, [projectId, nodeId, nodeTitle, nodeFile]);
 
   const handleRunCode = useCallback(async () => {
     if (!editorRef.current) return;
@@ -187,13 +191,116 @@ const IdeModal: React.FC<IdeModalProps> = ({
     }
   }, [projectId, nodeId, nodeTitle]);
 
-  // Fetch code and metadata when modal opens
+  const handleOpenSaveComponent = useCallback(() => {
+    setComponentName(nodeTitle);
+    setComponentDescription("");
+    setComponentError(null);
+    setIsSaveComponentModalOpen(true);
+  }, [nodeTitle]);
+
+  const handleCloseSaveComponent = useCallback(() => {
+    if (isSavingComponent) return;
+    setIsSaveComponentModalOpen(false);
+  }, [isSavingComponent]);
+
+  const handleSaveComponent = useCallback(async () => {
+    if (!editorRef.current) return;
+
+    const trimmedName = componentName.trim();
+    const currentCode = editorRef.current.getValue();
+
+    if (!trimmedName) {
+      setComponentError("컴포넌트 이름을 입력해주세요.");
+      return;
+    }
+
+    if (!currentCode || currentCode.trim().length === 0) {
+      setComponentError("저장할 코드가 없습니다.");
+      return;
+    }
+
+    const normalizeName = (value: string) => value.trim().replace(/\s+/g, " ").toLowerCase();
+
+    setIsSavingComponent(true);
+    setComponentError(null);
+
+    try {
+      const existingComponents = await userComponentApi.listUserComponents();
+      const normalizedNewName = normalizeName(trimmedName);
+      const hasDuplicate = existingComponents.some(
+        (component) => normalizeName(component.name) === normalizedNewName
+      );
+
+      if (hasDuplicate) {
+        setComponentError("이미 동일한 이름의 사용자 컴포넌트가 존재합니다.");
+        setIsSavingComponent(false);
+        return;
+      }
+
+      let componentMetadata: UserComponentMetadataDetail | undefined;
+
+      try {
+        const fileName = nodeFile || `${nodeId}_${nodeTitle.replace(/\s+/g, '_')}.py`;
+        const metadataResult = await codeApi.getNodeMetadata({
+          project_id: projectId,
+          node_id: nodeId,
+          node_data: {
+            data: {
+              file: fileName,
+            },
+          },
+        });
+
+        if (metadataResult.success && isMetadata(metadataResult.metadata)) {
+          const mapPorts = (ports?: MetadataPort[]) =>
+            ports
+              ?.filter((port) => typeof port === "object" && port !== null && typeof port.name === "string" && typeof port.type === "string")
+              .map((port) => ({
+                name: port.name,
+                type: port.type,
+                required: port.required,
+                default: port.default,
+              }));
+
+          componentMetadata = {
+            inputs: mapPorts(metadataResult.metadata.inputs),
+            outputs: mapPorts(metadataResult.metadata.outputs),
+          };
+        }
+      } catch (metadataError) {
+        console.error("Failed to compute metadata for user component:", metadataError);
+      }
+
+      await userComponentApi.createUserComponent({
+        name: trimmedName,
+        description: componentDescription.trim() || undefined,
+        code: currentCode,
+        project_id: projectId,
+        metadata: componentMetadata,
+      });
+
+      setIsSavingComponent(false);
+      setIsSaveComponentModalOpen(false);
+      setToastMessage(`'${trimmedName}' 사용자 컴포넌트를 저장했습니다.`);
+      window.dispatchEvent(new Event("userComponentsUpdated"));
+    } catch (error) {
+      let message = "사용자 컴포넌트를 저장하지 못했습니다.";
+      if (error instanceof ApiError) {
+        message = error.message;
+      } else if (error instanceof Error) {
+        message = error.message;
+      }
+      setComponentError(message);
+      setIsSavingComponent(false);
+    }
+  }, [componentDescription, componentName, projectId, nodeFile, nodeId, nodeTitle, setToastMessage]);
+
+  // Fetch code when modal opens
   useEffect(() => {
     if (isOpen) {
       fetchCode();
-      fetchMetadata();
     }
-  }, [isOpen, nodeId, fetchCode, fetchMetadata]);
+  }, [isOpen, nodeId, fetchCode]);
 
   useEffect(() => {
     if (isOpen) {
@@ -303,7 +410,7 @@ const IdeModal: React.FC<IdeModalProps> = ({
         },
       });
     },
-    [code, isLoadingCode, projectId, nodeId, nodeTitle, handleRunCode]
+    [code, isLoadingCode, handleRunCode]
   );
 
   if (!isOpen) return null;
@@ -326,7 +433,17 @@ const IdeModal: React.FC<IdeModalProps> = ({
               )}
             </h2>
           </div>
-          <X onClose={onClose} />
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleOpenSaveComponent}
+              className="px-3 py-1.5 bg-neutral-900 border border-neutral-700 text-white rounded hover:bg-neutral-800 hover:border-red-500 transition-colors text-sm flex items-center gap-2"
+              title="Save as User Component"
+            >
+              <span>🧩</span>
+              <span>Save Component</span>
+            </button>
+            <X onClose={onClose} />
+          </div>
         </div>
 
         <div className="flex-1 p-4 bg-neutral-900">
@@ -372,6 +489,73 @@ const IdeModal: React.FC<IdeModalProps> = ({
             />
           </div>
         </div>
+
+        {isSaveComponentModalOpen && (
+          <div
+            className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/70"
+            onClick={handleCloseSaveComponent}
+          >
+            <div
+              className="bg-neutral-950 border border-neutral-700 rounded-lg shadow-xl w-full max-w-md p-6"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="text-lg font-semibold text-white mb-4">
+                Save as User Component
+              </h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm text-neutral-300 mb-1" htmlFor="user-component-name">
+                    Component Name
+                  </label>
+                  <input
+                    id="user-component-name"
+                    value={componentName}
+                    onChange={(e) => setComponentName(e.target.value)}
+                    className="w-full px-3 py-2 bg-neutral-900 border border-neutral-700 rounded text-white focus:outline-none focus:border-red-500"
+                    placeholder="Enter component name"
+                    maxLength={100}
+                    autoFocus
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-neutral-300 mb-1" htmlFor="user-component-description">
+                    Description (optional)
+                  </label>
+                  <textarea
+                    id="user-component-description"
+                    value={componentDescription}
+                    onChange={(e) => setComponentDescription(e.target.value)}
+                    className="w-full px-3 py-2 bg-neutral-900 border border-neutral-700 rounded text-white focus:outline-none focus:border-red-500"
+                    placeholder="Briefly describe this component"
+                    rows={3}
+                    maxLength={500}
+                  />
+                </div>
+                {componentError && (
+                  <div className="text-red-500 text-sm">
+                    {componentError}
+                  </div>
+                )}
+              </div>
+              <div className="flex justify-end gap-2 mt-6">
+                <button
+                  onClick={handleCloseSaveComponent}
+                  className="px-3 py-1.5 text-sm text-neutral-300 border border-neutral-700 rounded hover:text-white hover:border-neutral-500 transition-colors"
+                  disabled={isSavingComponent}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveComponent}
+                  className="px-3 py-1.5 text-sm bg-red-600 text-white rounded hover:bg-red-500 transition-colors disabled:opacity-60"
+                  disabled={isSavingComponent}
+                >
+                  {isSavingComponent ? "Saving..." : "Save"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Save Modal */}
         <LoadingModal

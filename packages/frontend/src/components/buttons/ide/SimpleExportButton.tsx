@@ -1,5 +1,3 @@
-import React from "react";
-
 interface SimpleExportButtonProps {
   code: string;
   fileName: string;

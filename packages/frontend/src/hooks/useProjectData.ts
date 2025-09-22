@@ -1,13 +1,35 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { projectApi, codeApi } from "../utils/api";
-import type { ProjectStructure, ProjectNode, ProjectEdge } from "../types";
-import type { DefaultNodeType } from "../components/nodes/DefaultNode";
-import type { StartNodeType } from "../components/nodes/flow-control/StartNode";
-import type { ResultNodeType } from "../components/nodes/flow-control/ResultNode";
-import type { Edge, MarkerType } from "@xyflow/react";
+import type { ProjectStructure, ProjectNode, ProjectEdge, Position, NodeData, PortInfo } from "../types";
+import type { Edge, MarkerType, Node as FlowNode } from "@xyflow/react";
 
-// Union type for all node types
-type AnyNodeType = DefaultNodeType | StartNodeType | ResultNodeType;
+type AnyNodeType = FlowNode<NodeData>;
+
+interface MetadataPort {
+  name: string;
+  type?: string;
+  required?: boolean;
+  default?: unknown;
+}
+
+interface NodeMetadata {
+  inputs?: MetadataPort[];
+  outputs?: MetadataPort[];
+  mode?: "basic" | "script" | string;
+}
+
+function isNodeMetadata(value: unknown): value is NodeMetadata {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Record<string, unknown>;
+
+  const isPortArray = (ports: unknown): ports is MetadataPort[] =>
+    Array.isArray(ports) && ports.every((port) => typeof port === "object" && port !== null && typeof (port as MetadataPort).name === "string");
+
+  const inputsValid = candidate.inputs === undefined || isPortArray(candidate.inputs);
+  const outputsValid = candidate.outputs === undefined || isPortArray(candidate.outputs);
+
+  return inputsValid && outputsValid;
+}
 
 interface UseProjectDataReturn {
   projectData: ProjectStructure | null;
@@ -18,11 +40,12 @@ interface UseProjectDataReturn {
   transformedNodes: AnyNodeType[];
   transformedEdges: Edge[];
   maxNodeId: number;
+  updateStoredNodePosition: (nodeId: string, position: Position) => void;
 }
 
 export function useProjectData(
   projectId: string | undefined,
-  onNodeClick: (nodeId: string, title: string) => void
+  onNodeClick: (nodeId: string, title: string, file?: string) => void
 ): UseProjectDataReturn {
   const [projectData, setProjectData] = useState<ProjectStructure | null>(null);
   const [projectTitle, setProjectTitle] = useState<string>("");
@@ -32,6 +55,65 @@ export function useProjectData(
   const [transformedNodes, setTransformedNodes] = useState<AnyNodeType[]>([]);
   const [transformedEdges, setTransformedEdges] = useState<Edge[]>([]);
   const [maxNodeId, setMaxNodeId] = useState(1);
+
+  const updateMarkdownContent = useCallback((nodeId: string, content: string) => {
+    setTransformedNodes(prev => {
+      const index = prev.findIndex(node => node.id === nodeId && node.type === 'markdownNote');
+      if (index === -1) return prev;
+
+      const next = [...prev];
+      const target = next[index];
+      next[index] = {
+        ...target,
+        data: {
+          ...target.data,
+          content,
+        },
+      } satisfies AnyNodeType;
+      return next;
+    });
+  }, []);
+
+  const dispatchDeleteEvent = useCallback((nodeId: string) => {
+    const event = new CustomEvent("deleteNode", {
+      detail: { id: nodeId },
+      bubbles: true,
+    });
+    document.dispatchEvent(event);
+  }, []);
+
+  const persistMarkdownContent = useCallback(
+    async (nodeId: string, content: string) => {
+      updateMarkdownContent(nodeId, content);
+
+      if (!projectId) return;
+
+      try {
+        await projectApi.updateNodeData({
+          project_id: projectId,
+          node_id: nodeId,
+          data: { content },
+        });
+      } catch (err) {
+        console.error(`Failed to update markdown note ${nodeId}:`, err);
+      }
+    },
+    [projectId, updateMarkdownContent]
+  );
+
+  const updateStoredNodePosition = useCallback((nodeId: string, position: Position) => {
+    setTransformedNodes(prev => {
+      const index = prev.findIndex(node => node.id === nodeId);
+      if (index === -1) return prev;
+
+      const next = [...prev];
+      next[index] = {
+        ...next[index],
+        position,
+      } satisfies AnyNodeType;
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     const fetchProjectData = async () => {
@@ -75,7 +157,7 @@ export function useProjectData(
                     ...baseData,
                     file: node.data.file,
                   },
-                } as StartNodeType;
+                } satisfies AnyNodeType;
               } else if (nodeType === 'result') {
                 return {
                   id: node.id,
@@ -85,7 +167,26 @@ export function useProjectData(
                     ...baseData,
                     dimensions: node.data.dimensions,
                   },
-                } as ResultNodeType;
+                } satisfies AnyNodeType;
+              } else if (node.data.componentType === 'MarkdownNote') {
+                return {
+                  id: node.id,
+                  type: 'markdownNote',
+                  position: node.position,
+                  data: {
+                    title: baseData.title,
+                    content: typeof node.data.content === 'string' ? node.data.content : '',
+                    fontSize: typeof node.data.fontSize === 'number' ? node.data.fontSize : undefined,
+                    fontWeight: node.data.fontWeight === 'bold' ? 'bold' : 'normal',
+                    componentType: node.data.componentType,
+                    onCommit: (value: string) => {
+                      persistMarkdownContent(node.id, value);
+                    },
+                    onDelete: (nodeId: string) => {
+                      dispatchDeleteEvent(nodeId);
+                    },
+                  },
+                } satisfies AnyNodeType;
               } else {
                 // Check if this is a TextInput component
                 const isTextInput = node.data.componentType === 'TextInput' || 
@@ -105,7 +206,7 @@ export function useProjectData(
                       onNodeClick(node.id, node.data.title || `Node ${node.id}`, node.data.file);
                     },
                   },
-                } as DefaultNodeType;
+                } satisfies AnyNodeType;
               }
             }
           );
@@ -141,11 +242,11 @@ export function useProjectData(
                     node_data: { data: node.data }
                   });
                   
-                  if (metadataResult.success && metadataResult.metadata) {
+                  if (metadataResult.success && isNodeMetadata(metadataResult.metadata)) {
                     const metadata = metadataResult.metadata;
                     
                     // Convert metadata to port format
-                    const inputs = metadata.inputs?.map((input: any) => ({
+                    const inputs = metadata.inputs?.map((input) => ({
                       id: input.name,
                       label: input.name,
                       type: input.type,
@@ -153,7 +254,7 @@ export function useProjectData(
                       default: input.default,
                     }));
                     
-                    const outputs = metadata.outputs?.map((output: any) => ({
+                    const outputs = metadata.outputs?.map((output) => ({
                       id: output.name,
                       label: output.name,
                       type: output.type,
@@ -183,64 +284,66 @@ export function useProjectData(
           setTransformedNodes(nodesWithMetadata);
           
           // Validate edges against actual node ports before showing them
-          const validatedEdges = edges.map(edge => {
-            let validatedEdge = { ...edge, hidden: false };
+          const validatedEdges = edges.map((edge) => {
+            const validatedEdge = { ...edge, hidden: false };
             let handleChanged = false;
-            
-            // Find nodes to check their actual ports
-            const targetNode = nodesWithMetadata.find(n => n.id === edge.target);
-            const sourceNode = nodesWithMetadata.find(n => n.id === edge.source);
-            
-            // Validate target handle
+
+            const targetNode = nodesWithMetadata.find((n) => n.id === edge.target);
+            const sourceNode = nodesWithMetadata.find((n) => n.id === edge.source);
+
             if (edge.targetHandle && targetNode?.type === 'custom') {
-              const targetInputs = (targetNode.data as any).inputs || [];
-              const targetHandleExists = targetInputs.some((input: any) => 
-                input.id === edge.targetHandle
-              );
-              
+              const targetInputs: PortInfo[] = targetNode.data.inputs ?? [];
+              const targetHandleExists = targetInputs.some((input) => input.id === edge.targetHandle);
+
               if (!targetHandleExists) {
                 if (targetInputs.length > 0) {
-                  // Map to first available input
-                  console.warn(`Edge ${edge.id} has invalid targetHandle "${edge.targetHandle}", mapping to "${targetInputs[0].id}"`);
-                  validatedEdge.targetHandle = targetInputs[0].id;
+                  const fallbackHandle = targetInputs[0].id;
+                  console.warn(
+                    `Edge ${edge.id} has invalid targetHandle "${edge.targetHandle}", mapping to "${fallbackHandle}"`
+                  );
+                  validatedEdge.targetHandle = fallbackHandle;
                   handleChanged = true;
                 } else {
-                  console.warn(`Edge ${edge.id} has invalid targetHandle "${edge.targetHandle}" and no inputs available`);
+                  console.warn(
+                    `Edge ${edge.id} has invalid targetHandle "${edge.targetHandle}" and no inputs available`
+                  );
                   validatedEdge.targetHandle = undefined;
                   handleChanged = true;
                 }
               }
             }
-            
-            // Validate source handle
+
             if (edge.sourceHandle && sourceNode?.type === 'custom') {
-              const sourceOutputs = (sourceNode.data as any).outputs || [];
-              const sourceHandleExists = sourceOutputs.some((output: any) => 
-                output.id === edge.sourceHandle
-              );
-              
+              const sourceOutputs: PortInfo[] = sourceNode.data.outputs ?? [];
+              const sourceHandleExists = sourceOutputs.some((output) => output.id === edge.sourceHandle);
+
               if (!sourceHandleExists) {
                 if (sourceOutputs.length > 0) {
-                  // Map to first available output
-                  console.warn(`Edge ${edge.id} has invalid sourceHandle "${edge.sourceHandle}", mapping to "${sourceOutputs[0].id}"`);
-                  validatedEdge.sourceHandle = sourceOutputs[0].id;
+                  const fallbackHandle = sourceOutputs[0].id;
+                  console.warn(
+                    `Edge ${edge.id} has invalid sourceHandle "${edge.sourceHandle}", mapping to "${fallbackHandle}"`
+                  );
+                  validatedEdge.sourceHandle = fallbackHandle;
                   handleChanged = true;
                 } else {
-                  console.warn(`Edge ${edge.id} has invalid sourceHandle "${edge.sourceHandle}" and no outputs available`);
+                  console.warn(
+                    `Edge ${edge.id} has invalid sourceHandle "${edge.sourceHandle}" and no outputs available`
+                  );
                   validatedEdge.sourceHandle = undefined;
                   handleChanged = true;
                 }
               }
             }
-            
-            // Force edge recreation if handles were changed during validation
+
             if (handleChanged) {
               const timestamp = Date.now();
               const baseId = edge.id.split('-')[0];
               validatedEdge.id = `${baseId}-validated-${timestamp}`;
-              console.log(`Changed edge ID from ${edge.id} to ${validatedEdge.id} after handle validation`);
+              console.log(
+                `Changed edge ID from ${edge.id} to ${validatedEdge.id} after handle validation`
+              );
             }
-            
+
             return validatedEdge;
           });
           
@@ -272,7 +375,7 @@ export function useProjectData(
     };
 
     fetchProjectData();
-  }, [projectId, onNodeClick]);
+  }, [projectId, onNodeClick, persistMarkdownContent, dispatchDeleteEvent]);
 
   return {
     projectData,
@@ -283,5 +386,6 @@ export function useProjectData(
     transformedNodes,
     transformedEdges,
     maxNodeId,
+    updateStoredNodePosition,
   };
 }

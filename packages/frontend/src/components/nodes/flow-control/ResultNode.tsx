@@ -13,12 +13,21 @@ interface ExecutionResult {
   error?: string;
   execution_time_ms?: number;
   logs?: string;
-  display_metadata?: {
-    display: unknown;
-    full_ref?: string;
-    is_truncated?: boolean;
-    raw_value?: unknown;
-  };
+  display_metadata?: ResultDisplayMetadata;
+}
+
+interface ResultDisplayMetadata {
+  display: unknown;
+  full_ref?: string | null;
+  is_truncated?: boolean;
+  raw_value?: unknown;
+}
+
+interface StructuredErrorInfo {
+  _error?: boolean;
+  error?: string;
+  error_type?: 'primary' | string;
+  logs?: string;
 }
 
 export type ResultNodeType = Node<{
@@ -43,6 +52,11 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
   const nodeRef = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLTextAreaElement>(null);
   const didInitCache = useRef(false);
+  const resultMetadataRef = useRef<{ fullDataRef: string | null; rawValue: unknown; isTruncated: boolean }>({
+    fullDataRef: null,
+    rawValue: undefined,
+    isTruncated: false,
+  });
   const { projectId } = useParams<{ projectId: string }>();
   const { getZoom } = useReactFlow();
   
@@ -90,7 +104,7 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
       return json.length > MAX_LENGTH 
         ? json.slice(0, MAX_LENGTH) + "\n...[truncated]" 
         : json;
-    } catch (error) {
+    } catch {
       // Fallback to string conversion
       return String(value);
     }
@@ -149,8 +163,8 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
     // Check if this is an error result
     if (nodeExecutionResult.status === 'error') {
       // Check error type from backend
-      const errorInfo = nodeExecutionResult.output as any;
-      if (errorInfo && errorInfo._error) {
+      const errorInfo = nodeExecutionResult.output as StructuredErrorInfo | undefined;
+      if (errorInfo?._error) {
         if (errorInfo.error_type === 'primary') {
           // Format primary error display with full details
           const errorDisplay = [
@@ -231,16 +245,20 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
       const metadata = nodeExecutionResult.display_metadata;
       displayValue = metadata.display;
       actualValue = nodeExecutionResult.output;
-      
+
       // Store metadata for download functionality
-      (nodeRef.current as any)._fullDataRef = metadata.full_ref;
-      (nodeRef.current as any)._rawValue = metadata.raw_value || actualValue;
-      (nodeRef.current as any)._isTruncated = metadata.is_truncated;
+      resultMetadataRef.current = {
+        fullDataRef: metadata.full_ref ?? null,
+        rawValue: metadata.raw_value ?? actualValue,
+        isTruncated: Boolean(metadata.is_truncated),
+      };
     } else {
       // No metadata, use direct value
-      (nodeRef.current as any)._fullDataRef = null;
-      (nodeRef.current as any)._rawValue = actualValue;
-      (nodeRef.current as any)._isTruncated = false;
+      resultMetadataRef.current = {
+        fullDataRef: null,
+        rawValue: actualValue,
+        isTruncated: false,
+      };
     }
     
     // Format and display
@@ -333,11 +351,9 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
   const handleGetResult = async (e: React.MouseEvent) => {
     e.stopPropagation();
 
-    const isTruncated = (nodeRef.current as any)?._isTruncated;
-    const fullDataRef = (nodeRef.current as any)?._fullDataRef;
-    const rawValue = (nodeRef.current as any)?._rawValue;
-    
-    let fullData: any = null;
+    const { isTruncated, fullDataRef, rawValue } = resultMetadataRef.current;
+
+    let fullData: unknown = null;
     
     // If truncated and has reference, fetch full data from backend
     if (isTruncated && fullDataRef && projectId) {
@@ -347,7 +363,7 @@ export default function ResultNode(props: NodeProps<ResultNodeType>) {
           : `http://${window.location.hostname}:8000`;
         const response = await fetch(`${apiUrl}/api/project/${projectId}/node/${props.id}/full-result`);
         const result = await response.json();
-        
+
         if (result.success) {
           // Use raw data without any formatting to preserve full content
           fullData = result.data;

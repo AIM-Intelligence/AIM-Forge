@@ -28,7 +28,7 @@ export default function TextInputNode(props: NodeProps<TextInputNodeType>) {
   const textRef = useRef<HTMLTextAreaElement>(null);
   const { projectId } = useParams<{ projectId: string }>();
   const setNodeResult = useExecutionStore((state) => state.setNodeResult);
-  const { setNodeValue, getNodeValue } = useNodeValueStore();
+  const { setNodeValue } = useNodeValueStore();
   const [saveTimeout, setSaveTimeout] = useState<NodeJS.Timeout | null>(null);
   const { getZoom } = useReactFlow();
 
@@ -115,7 +115,7 @@ export default function TextInputNode(props: NodeProps<TextInputNodeType>) {
         setNodeValue(props.id, "");
       }
     }
-  }, [projectId, props.id, props.data?.value, setNodeResult]);
+  }, [projectId, props.id, props.data?.value, setNodeResult, setNodeValue]);
 
   // Sync data with backend (debounced)
   const syncWithBackend = useCallback(async (data: Record<string, unknown>) => {

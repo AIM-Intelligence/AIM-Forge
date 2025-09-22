@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useParams } from "react-router-dom";
 import IdeModal from "../../components/modal/Ide";
 import Loading from "../../components/loading/Loading";
@@ -10,9 +10,87 @@ import { useProjectData } from "../../hooks/useProjectData";
 import { useNodeOperations } from "../../hooks/useNodeOperations";
 import { useEdgeOperations } from "../../hooks/useEdgeOperations";
 import { type ComponentTemplate } from "../../config/componentLibrary";
-import { codeApi } from "../../utils/api";
+import { codeApi, projectApi } from "../../utils/api";
 import { useExecutionStore } from "../../stores/executionStore";
 import { useNodeValueStore } from "../../stores/nodeValueStore";
+import type { NodeData, PortInfo, UserComponentMetadataDetail } from "../../types";
+import type { Node as FlowNode, ReactFlowInstance } from "@xyflow/react";
+
+interface MetadataPort {
+  name: string;
+  type: string;
+  required?: boolean;
+  default?: unknown;
+}
+
+interface NodeMetadata {
+  inputs?: MetadataPort[];
+  outputs?: MetadataPort[];
+}
+
+type AnyNodeType = FlowNode<NodeData>;
+
+type StoredComponentMetadata = UserComponentMetadataDetail;
+
+function isStoredComponentMetadata(value: unknown): value is StoredComponentMetadata {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  const inputs = record.inputs;
+  const outputs = record.outputs;
+
+  if (inputs !== undefined && !Array.isArray(inputs)) {
+    return false;
+  }
+  if (outputs !== undefined && !Array.isArray(outputs)) {
+    return false;
+  }
+
+  return true;
+}
+
+const mapPortsFromStoredMetadata = (
+  ports?: StoredComponentMetadata["inputs"]
+): PortInfo[] | undefined => {
+  if (!ports || ports.length === 0) {
+    return undefined;
+  }
+
+  const validPorts = ports.filter(
+    (port): port is { name: string; type: string; required?: boolean; default?: unknown } =>
+      Boolean(
+        port &&
+        typeof port === "object" &&
+        typeof (port as { name?: unknown }).name === "string" &&
+        typeof (port as { type?: unknown }).type === "string"
+      )
+  );
+
+  if (validPorts.length === 0) {
+    return undefined;
+  }
+
+  return validPorts.map((port) => ({
+    id: port.name,
+    label: port.name,
+    type: port.type,
+    required: port.required !== false,
+    default: port.default,
+  }));
+};
+
+function isMetadata(value: unknown): value is NodeMetadata {
+  if (typeof value !== "object" || value === null) return false;
+  const maybe = value as Record<string, unknown>;
+  const validArray = (arr: unknown): arr is MetadataPort[] =>
+    Array.isArray(arr) && arr.every((item) =>
+      typeof item === "object" && item !== null && typeof (item as MetadataPort).name === "string" && typeof (item as MetadataPort).type === "string"
+    );
+  const inputsValid = maybe.inputs === undefined || validArray(maybe.inputs);
+  const outputsValid = maybe.outputs === undefined || validArray(maybe.outputs);
+  return inputsValid && outputsValid;
+}
 
 export default function Project() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -20,7 +98,7 @@ export default function Project() {
   const setToastMessage = useExecutionStore((state) => state.setToastMessage);
   const clearResults = useExecutionStore((state) => state.clearResults);
   const loadFromLocalStorage = useNodeValueStore((state) => state.loadFromLocalStorage);
-  const reactFlowInstanceRef = useRef<any>(null);
+  const reactFlowInstanceRef = useRef<ReactFlowInstance | null>(null);
 
   // Load node values from localStorage when project loads
   useEffect(() => {
@@ -73,6 +151,7 @@ export default function Project() {
     transformedNodes,
     transformedEdges,
     maxNodeId,
+    updateStoredNodePosition,
   } = useProjectData(projectId, handleNodeClick);
 
   // Initialize node counter with max ID
@@ -81,7 +160,7 @@ export default function Project() {
   }
 
   // Node operations
-  const { nodes, setNodes, edges, setEdges, onNodesChange, onEdgesChange, addNewNode } =
+  const { nodes, setNodes, edges, setEdges, onNodesChange, onEdgesChange } =
     useNodeOperations({
       projectId,
       initialNodes: transformedNodes,
@@ -90,6 +169,7 @@ export default function Project() {
       setNodeIdCounter,
       onNodeClick: handleNodeClick,
       reactFlowInstance: reactFlowInstanceRef,
+      onNodePositionUpdate: updateStoredNodePosition,
     });
 
   // Edge operations
@@ -99,6 +179,41 @@ export default function Project() {
     setEdges,
     nodes,
   });
+
+  const handleMarkdownCommit = useCallback(
+    async (nodeId: string, content: string) => {
+      setNodes((currentNodes) =>
+        currentNodes.map((node) => {
+          if (node.id !== nodeId || node.type !== "markdownNote") {
+            return node;
+          }
+
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              content,
+            },
+          } satisfies AnyNodeType;
+        })
+      );
+
+      if (!projectId) {
+        return;
+      }
+
+      try {
+        await projectApi.updateNodeData({
+          project_id: projectId,
+          node_id: nodeId,
+          data: { content },
+        });
+      } catch (error) {
+        console.error(`Failed to persist markdown note ${nodeId}:`, error);
+      }
+    },
+    [projectId, setNodes]
+  );
 
   // Handle component library selection
   const handleComponentSelect = useCallback(
@@ -110,6 +225,9 @@ export default function Project() {
       setNodeIdCounter(prev => prev + 1);
 
       try {
+        let storedMetadata: StoredComponentMetadata | undefined = component.metadata;
+        let templateResponseData: Record<string, unknown> | null = null;
+
         // Create node from template
         const apiUrl = window.location.hostname === 'localhost' 
           ? 'http://localhost:8000' 
@@ -128,88 +246,139 @@ export default function Project() {
         });
 
         if (response.ok) {
-          const result = await response.json();
-          
-          // Get metadata for the new node to extract inputs/outputs
-          let inputs = undefined;
-          let outputs = undefined;
-          
-          try {
-            const metadataResult = await codeApi.getNodeMetadata({
-              project_id: projectId,
-              node_id: newNodeId,
-              node_data: { 
-                data: { 
-                  file: result.file_name || `${newNodeId}_${component.name.replace(/\s+/g, '_')}.py` 
-                } 
-              }
-            });
-            
-            if (metadataResult.success && metadataResult.metadata) {
-              const metadata = metadataResult.metadata;
-              
-              // Convert metadata to port format
-              if (metadata.inputs?.length > 0) {
-                inputs = metadata.inputs.map((input: any) => ({
-                  id: input.name,
-                  label: input.name,
-                  type: input.type,
-                  required: input.required !== false,
-                  default: input.default,
-                }));
-              }
-              
-              if (metadata.outputs?.length > 0) {
-                outputs = metadata.outputs.map((output: any) => ({
-                  id: output.name,
-                  label: output.name,
-                  type: output.type,
-                  required: false,
-                  default: undefined,
-                }));
-              }
-            }
-          } catch (error) {
-            console.error(`Failed to fetch metadata for new node:`, error);
+          templateResponseData = await response.json();
+          if (isStoredComponentMetadata(templateResponseData?.metadata)) {
+            storedMetadata = templateResponseData.metadata;
           }
-          
+
+          // Get metadata for the new node to extract inputs/outputs
+          let inputs = mapPortsFromStoredMetadata(storedMetadata?.inputs);
+          let outputs = mapPortsFromStoredMetadata(storedMetadata?.outputs);
+
+          const hasValidStoredPorts = Boolean((inputs && inputs.length > 0) || (outputs && outputs.length > 0));
+
+          if (!hasValidStoredPorts) {
+            try {
+              const metadataResult = await codeApi.getNodeMetadata({
+                project_id: projectId,
+                node_id: newNodeId,
+                node_data: {
+                  data: {
+                    file:
+                      (typeof templateResponseData?.file_name === "string"
+                        ? templateResponseData.file_name
+                        : `${newNodeId}_${component.name.replace(/\s+/g, '_')}.py`),
+                  },
+                },
+              });
+
+              if (metadataResult.success && isMetadata(metadataResult.metadata)) {
+                const metadata = metadataResult.metadata;
+
+                if (metadata.inputs?.length > 0) {
+                  inputs = metadata.inputs.map((input) => ({
+                    id: input.name,
+                    label: input.name,
+                    type: input.type,
+                    required: input.required !== false,
+                    default: input.default,
+                  }));
+                }
+
+                if (metadata.outputs?.length > 0) {
+                  outputs = metadata.outputs.map((output) => ({
+                    id: output.name,
+                    label: output.name,
+                    type: output.type,
+                    required: false,
+                    default: undefined,
+                  }));
+                }
+              }
+            } catch (error) {
+              console.error(`Failed to fetch metadata for new node:`, error);
+            }
+          }
+
           // Calculate position at viewport center
           let position = { x: 250, y: 100 }; // Default fallback
-          
+
           if (reactFlowInstanceRef.current) {
-            const { x, y, zoom } = reactFlowInstanceRef.current.getViewport();
             const centerX = window.innerWidth / 2;
             const centerY = window.innerHeight / 2;
-            
-            // Convert screen center to flow coordinates
+
             position = reactFlowInstanceRef.current.screenToFlowPosition({
               x: centerX,
               y: centerY
             });
-            
+
             // Add small random offset to prevent exact overlap when adding multiple nodes
             position.x += (Math.random() - 0.5) * 50;
             position.y += (Math.random() - 0.5) * 50;
           }
-          
-          // Create new node without page refresh
-          const newNode = {
-            id: newNodeId,
-            type: component.nodeType || "custom",
-            position,
-            data: {
-              title: component.name,
-              description: component.description,
-              file: result.file_name || `${newNodeId}_${component.name.replace(/\s+/g, '_')}.py`,
-              viewCode: () => handleNodeClick(newNodeId, component.name, result.file_name || `${newNodeId}_${component.name.replace(/\s+/g, '_')}.py`),
-              inputs: inputs,
-              outputs: outputs,
-              componentType: component.componentType,  // Add componentType for extensible rendering
-            }
-          };
-          
+
+          let newNode: AnyNodeType;
+
+          if (component.componentType === "MarkdownNote" || component.nodeType === "markdownNote") {
+            newNode = {
+              id: newNodeId,
+              type: component.nodeType || "markdownNote",
+              position,
+              data: {
+                title: component.name,
+                description: component.description,
+                componentType: component.componentType,
+                content: "",
+                onCommit: (value: string) => {
+                  void handleMarkdownCommit(newNodeId, value);
+                },
+                onDelete: (nodeId: string) => {
+                  const deleteEvent = new CustomEvent("deleteNode", {
+                    detail: { id: nodeId },
+                    bubbles: true,
+                  });
+                  document.dispatchEvent(deleteEvent);
+                },
+              },
+            } satisfies AnyNodeType;
+          } else {
+            newNode = {
+              id: newNodeId,
+              type: component.nodeType || "custom",
+              position,
+              data: {
+                title: component.name,
+                description: component.description,
+                file:
+                  (typeof templateResponseData?.file_name === "string"
+                    ? templateResponseData.file_name
+                    : `${newNodeId}_${component.name.replace(/\s+/g, '_')}.py`),
+                viewCode: () => handleNodeClick(
+                  newNodeId,
+                  component.name,
+                  typeof templateResponseData?.file_name === "string"
+                    ? templateResponseData.file_name
+                    : `${newNodeId}_${component.name.replace(/\s+/g, '_')}.py`
+                ),
+                inputs,
+                outputs,
+                componentType: component.componentType,
+              },
+            } satisfies AnyNodeType;
+          }
+
+          try {
+            await projectApi.updateNodePosition({
+              project_id: projectId,
+              node_id: newNodeId,
+              position,
+            });
+          } catch (positionError) {
+            console.error(`Failed to persist initial position for node ${newNodeId}:`, positionError);
+          }
+
           // Add node to React Flow
-          setNodes(currentNodes => [...currentNodes, newNode]);
+          setNodes((currentNodes) => [...currentNodes, newNode]);
         } else {
           console.error("Failed to create node from template");
         }
@@ -217,7 +386,7 @@ export default function Project() {
         console.error("Error creating node from template:", error);
       }
     },
-    [projectId, nodeIdCounter, addNewNode]
+    [projectId, nodeIdCounter, setNodeIdCounter, setNodes, handleNodeClick, handleMarkdownCommit]
   );
 
   // Handle retry
@@ -265,7 +434,9 @@ export default function Project() {
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         isValidConnection={isValidConnection}
-        onInit={(instance) => { reactFlowInstanceRef.current = instance; }}
+        onInit={(instance) => {
+          reactFlowInstanceRef.current = instance;
+        }}
       >
         <ProjectPanel
           projectId={projectId!}
@@ -280,14 +451,14 @@ export default function Project() {
               
               // Define excluded component types (for input components)
               const excludedComponentTypes = ['TextInput'];
-              const componentType = (node.data as any)?.componentType;
+              const componentType = node.data.componentType;
               if (componentType && excludedComponentTypes.includes(componentType)) {
                 return false;
               }
-              
+
               // Define excluded title patterns (as a safety net)
               const excludedTitlePatterns = ['Text Input', 'Start Node', 'Result Node'];
-              const title = (node.data as any)?.title || '';
+              const title = node.data.title ?? '';
               if (excludedTitlePatterns.some(pattern => title.includes(pattern))) {
                 return false;
               }

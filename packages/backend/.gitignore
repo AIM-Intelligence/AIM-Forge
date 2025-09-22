@@ -9,6 +9,10 @@ __pycache__/
 projects/*
 !projects/.gitkeep
 
+projects_dev
+user_templates/*
+!user_templates/.gitkeep
+
 # Virtual environment
 venv/
 env/
