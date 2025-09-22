@@ -225,6 +225,33 @@ export interface DeleteEdgeResponse {
   message: string;
 }
 
+
+// ==================== User Component Templates ====================
+
+export interface UserComponentPortMetadata {
+  name: string;
+  type: string;
+  required?: boolean;
+  default?: unknown;
+}
+
+export interface UserComponentMetadataDetail {
+  inputs?: UserComponentPortMetadata[];
+  outputs?: UserComponentPortMetadata[];
+  tags?: string[];
+}
+
+export interface UserComponentMetadata {
+  id: string;
+  name: string;
+  description?: string | null;
+  created_at: string;
+  updated_at: string;
+  author_id: string;
+  project_id?: string | null;
+  metadata: UserComponentMetadataDetail;
+}
+
 // ==================== Package Management ====================
 
 export interface PackageInfo {

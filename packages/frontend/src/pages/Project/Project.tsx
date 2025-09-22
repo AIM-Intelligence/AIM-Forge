@@ -13,7 +13,7 @@ import { type ComponentTemplate } from "../../config/componentLibrary";
 import { codeApi, projectApi } from "../../utils/api";
 import { useExecutionStore } from "../../stores/executionStore";
 import { useNodeValueStore } from "../../stores/nodeValueStore";
-import type { NodeData, PortInfo } from "../../types";
+import type { NodeData, PortInfo, UserComponentMetadataDetail } from "../../types";
 import type { Node as FlowNode, ReactFlowInstance } from "@xyflow/react";
 
 interface MetadataPort {
@@ -29,6 +29,56 @@ interface NodeMetadata {
 }
 
 type AnyNodeType = FlowNode<NodeData>;
+
+type StoredComponentMetadata = UserComponentMetadataDetail;
+
+function isStoredComponentMetadata(value: unknown): value is StoredComponentMetadata {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  const inputs = record.inputs;
+  const outputs = record.outputs;
+
+  if (inputs !== undefined && !Array.isArray(inputs)) {
+    return false;
+  }
+  if (outputs !== undefined && !Array.isArray(outputs)) {
+    return false;
+  }
+
+  return true;
+}
+
+const mapPortsFromStoredMetadata = (
+  ports?: StoredComponentMetadata["inputs"]
+): PortInfo[] | undefined => {
+  if (!ports || ports.length === 0) {
+    return undefined;
+  }
+
+  const validPorts = ports.filter(
+    (port): port is { name: string; type: string; required?: boolean; default?: unknown } =>
+      Boolean(
+        port &&
+        typeof port === "object" &&
+        typeof (port as { name?: unknown }).name === "string" &&
+        typeof (port as { type?: unknown }).type === "string"
+      )
+  );
+
+  if (validPorts.length === 0) {
+    return undefined;
+  }
+
+  return validPorts.map((port) => ({
+    id: port.name,
+    label: port.name,
+    type: port.type,
+    required: port.required !== false,
+    default: port.default,
+  }));
+};
 
 function isMetadata(value: unknown): value is NodeMetadata {
   if (typeof value !== "object" || value === null) return false;
@@ -175,6 +225,9 @@ export default function Project() {
       setNodeIdCounter(prev => prev + 1);
 
       try {
+        let storedMetadata: StoredComponentMetadata | undefined = component.metadata;
+        let templateResponseData: Record<string, unknown> | null = null;
+
         // Create node from template
         const apiUrl = window.location.hostname === 'localhost' 
           ? 'http://localhost:8000' 
@@ -193,49 +246,58 @@ export default function Project() {
         });
 
         if (response.ok) {
-          const result = await response.json();
+          templateResponseData = await response.json();
+          if (isStoredComponentMetadata(templateResponseData?.metadata)) {
+            storedMetadata = templateResponseData.metadata;
+          }
 
           // Get metadata for the new node to extract inputs/outputs
-          let inputs: PortInfo[] | undefined;
-          let outputs: PortInfo[] | undefined;
+          let inputs = mapPortsFromStoredMetadata(storedMetadata?.inputs);
+          let outputs = mapPortsFromStoredMetadata(storedMetadata?.outputs);
 
-          try {
-            const metadataResult = await codeApi.getNodeMetadata({
-              project_id: projectId,
-              node_id: newNodeId,
-              node_data: {
-                data: {
-                  file: result.file_name || `${newNodeId}_${component.name.replace(/\s+/g, '_')}.py`
+          const hasValidStoredPorts = Boolean((inputs && inputs.length > 0) || (outputs && outputs.length > 0));
+
+          if (!hasValidStoredPorts) {
+            try {
+              const metadataResult = await codeApi.getNodeMetadata({
+                project_id: projectId,
+                node_id: newNodeId,
+                node_data: {
+                  data: {
+                    file:
+                      (typeof templateResponseData?.file_name === "string"
+                        ? templateResponseData.file_name
+                        : `${newNodeId}_${component.name.replace(/\s+/g, '_')}.py`),
+                  },
+                },
+              });
+
+              if (metadataResult.success && isMetadata(metadataResult.metadata)) {
+                const metadata = metadataResult.metadata;
+
+                if (metadata.inputs?.length > 0) {
+                  inputs = metadata.inputs.map((input) => ({
+                    id: input.name,
+                    label: input.name,
+                    type: input.type,
+                    required: input.required !== false,
+                    default: input.default,
+                  }));
+                }
+
+                if (metadata.outputs?.length > 0) {
+                  outputs = metadata.outputs.map((output) => ({
+                    id: output.name,
+                    label: output.name,
+                    type: output.type,
+                    required: false,
+                    default: undefined,
+                  }));
                 }
               }
-            });
-
-            if (metadataResult.success && isMetadata(metadataResult.metadata)) {
-              const metadata = metadataResult.metadata;
-
-              // Convert metadata to port format
-              if (metadata.inputs?.length > 0) {
-                inputs = metadata.inputs.map((input) => ({
-                  id: input.name,
-                  label: input.name,
-                  type: input.type,
-                  required: input.required !== false,
-                  default: input.default,
-                }));
-              }
-
-              if (metadata.outputs?.length > 0) {
-                outputs = metadata.outputs.map((output) => ({
-                  id: output.name,
-                  label: output.name,
-                  type: output.type,
-                  required: false,
-                  default: undefined,
-                }));
-              }
+            } catch (error) {
+              console.error(`Failed to fetch metadata for new node:`, error);
             }
-          } catch (error) {
-            console.error(`Failed to fetch metadata for new node:`, error);
           }
 
           // Calculate position at viewport center
@@ -287,11 +349,16 @@ export default function Project() {
               data: {
                 title: component.name,
                 description: component.description,
-                file: result.file_name || `${newNodeId}_${component.name.replace(/\s+/g, '_')}.py`,
+                file:
+                  (typeof templateResponseData?.file_name === "string"
+                    ? templateResponseData.file_name
+                    : `${newNodeId}_${component.name.replace(/\s+/g, '_')}.py`),
                 viewCode: () => handleNodeClick(
                   newNodeId,
                   component.name,
-                  result.file_name || `${newNodeId}_${component.name.replace(/\s+/g, '_')}.py`
+                  typeof templateResponseData?.file_name === "string"
+                    ? templateResponseData.file_name
+                    : `${newNodeId}_${component.name.replace(/\s+/g, '_')}.py`
                 ),
                 inputs,
                 outputs,
@@ -367,7 +434,9 @@ export default function Project() {
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         isValidConnection={isValidConnection}
-        onInit={(instance) => { reactFlowInstanceRef.current = instance; }}
+        onInit={(instance) => {
+          reactFlowInstanceRef.current = instance;
+        }}
       >
         <ProjectPanel
           projectId={projectId!}

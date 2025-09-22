@@ -28,6 +28,7 @@ import type {
   PackageListResponse,
   PackageActionResponse,
   PackageLogResponse,
+  UserComponentMetadata,
 } from "../types";
 
 const API_BASE_URL = "/api";
@@ -436,4 +437,50 @@ export const codeApi = {
 export default {
   project: projectApi,
   code: codeApi,
+};
+
+// ==================== User Component APIs ====================
+
+export const userComponentApi = {
+  async createUserComponent(data: {
+    name: string;
+    description?: string | null;
+    code: string;
+    project_id?: string | null;
+    author_id?: string | null;
+    metadata?: {
+      inputs?: Array<{
+        name: string;
+        type: string;
+        required?: boolean;
+        default?: unknown;
+      }>;
+      outputs?: Array<{
+        name: string;
+        type: string;
+        required?: boolean;
+        default?: unknown;
+      }>;
+      tags?: string[];
+    } | null;
+  }): Promise<UserComponentMetadata> {
+    return apiCall<UserComponentMetadata>("/user-components/", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async listUserComponents(): Promise<UserComponentMetadata[]> {
+    return apiCall<UserComponentMetadata[]>("/user-components/");
+  },
+
+  async getUserComponent(templateId: string): Promise<UserComponentMetadata> {
+    return apiCall<UserComponentMetadata>(`/user-components/${templateId}`);
+  },
+  async deleteUserComponent(templateId: string): Promise<{ success: boolean }>
+  {
+    return apiCall<{ success: boolean }>(`/user-components/${templateId}`, {
+      method: "DELETE",
+    });
+  },
 };

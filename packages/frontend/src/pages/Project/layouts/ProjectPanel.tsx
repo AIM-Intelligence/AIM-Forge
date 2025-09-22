@@ -1,7 +1,12 @@
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { componentLibrary, type ComponentTemplate } from "../../../config/componentLibrary";
 import PackageManagerPanel from "./PackageManagerPanel";
+import DeleteCheck from "../../../components/modal/DeleteCheck";
+import { userComponentApi } from "../../../utils/api";
+import type { UserComponentMetadata } from "../../../types";
+
+const USER_TEMPLATE_PREFIX = "user:";
 
 interface ProjectPanelProps {
   projectId: string;
@@ -22,9 +27,51 @@ export default function ProjectPanel({
   const [isExpanded, setIsExpanded] = useState(false);
   const [isPackagePanelOpen, setIsPackagePanelOpen] = useState(false);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
-    new Set(componentLibrary.map(cat => cat.id))
+    new Set([...componentLibrary.map(cat => cat.id), "user-components"])
   );
   const [searchTerm, setSearchTerm] = useState("");
+  const [userComponents, setUserComponents] = useState<UserComponentMetadata[]>([]);
+  const [isLoadingUserComponents, setIsLoadingUserComponents] = useState(false);
+  const [userComponentsError, setUserComponentsError] = useState<string | null>(null);
+  const [deleteModal, setDeleteModal] = useState<{
+    isOpen: boolean;
+    component: UserComponentMetadata | null;
+  }>({ isOpen: false, component: null });
+  const [isDeletingComponent, setIsDeletingComponent] = useState(false);
+
+  const userComponentsById = useMemo(() => {
+    return new Map(userComponents.map(component => [component.id, component]));
+  }, [userComponents]);
+
+  const fetchUserComponents = useCallback(async () => {
+    setIsLoadingUserComponents(true);
+    setUserComponentsError(null);
+
+    try {
+      const components = await userComponentApi.listUserComponents();
+      setUserComponents(components);
+    } catch (error) {
+      console.error("Failed to load user components:", error);
+      setUserComponentsError("Failed to load user components");
+    } finally {
+      setIsLoadingUserComponents(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchUserComponents();
+  }, [fetchUserComponents]);
+
+  useEffect(() => {
+    const handleUpdated = () => {
+      void fetchUserComponents();
+    };
+
+    window.addEventListener("userComponentsUpdated", handleUpdated);
+    return () => {
+      window.removeEventListener("userComponentsUpdated", handleUpdated);
+    };
+  }, [fetchUserComponents]);
 
   const toggleCategory = (categoryId: string) => {
     setExpandedCategories(prev => {
@@ -38,14 +85,68 @@ export default function ProjectPanel({
     });
   };
 
+  const handleDeleteComponent = useCallback(async () => {
+    const target = deleteModal.component;
+    if (!target) return;
+
+    setIsDeletingComponent(true);
+    try {
+      await userComponentApi.deleteUserComponent(target.id);
+      setDeleteModal({ isOpen: false, component: null });
+      await fetchUserComponents();
+    } catch (error) {
+      console.error("Failed to delete user component:", error);
+      setUserComponentsError("Failed to delete user component");
+    } finally {
+      setIsDeletingComponent(false);
+    }
+  }, [deleteModal.component, fetchUserComponents]);
+
+  const userCategory = useMemo(() => {
+    const searchLower = searchTerm.toLowerCase();
+    const matchesSearch = (component: UserComponentMetadata) => (
+      component.name.toLowerCase().includes(searchLower) ||
+      (component.description ?? "").toLowerCase().includes(searchLower)
+    );
+
+    const components = userComponents
+      .filter(matchesSearch)
+      .map<ComponentTemplate>((component) => ({
+        id: component.id,
+        name: component.name,
+        description: component.description ?? "",
+        icon: "🧩",
+        template: `${USER_TEMPLATE_PREFIX}${component.id}`,
+        category: "user-components",
+        componentType: "user-template",
+        userTemplateId: component.id,
+        metadata: component.metadata,
+      }));
+
+    return {
+      id: "user-components",
+      name: "User Components",
+      icon: "🧩",
+      components,
+    };
+  }, [searchTerm, userComponents]);
+
   // Filter components based on search
-  const filteredLibrary = componentLibrary.map(category => ({
-    ...category,
-    components: category.components.filter(comp =>
-      comp.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      comp.description.toLowerCase().includes(searchTerm.toLowerCase())
-    )
-  })).filter(category => category.components.length > 0);
+  const filteredLibrary = useMemo(() => {
+    const searchLower = searchTerm.toLowerCase();
+
+    const baseCategories = componentLibrary
+      .map(category => ({
+        ...category,
+        components: category.components.filter(comp =>
+          comp.name.toLowerCase().includes(searchLower) ||
+          (comp.description ?? "").toLowerCase().includes(searchLower)
+        ),
+      }))
+      .filter(category => category.components.length > 0);
+
+    return [...baseCategories, userCategory];
+  }, [searchTerm, userCategory]);
 
   return (
     <div className="flex flex-col gap-1 items-center">
@@ -95,59 +196,148 @@ export default function ProjectPanel({
         </div>
 
         {/* Categories */}
-        <div className="max-h-[50vh] overflow-y-auto p-2">
-            {filteredLibrary.length === 0 ? (
-              <div className="text-neutral-500 text-center py-4 text-sm">
-                No components found
-              </div>
-            ) : (
-              filteredLibrary.map(category => (
-                <div key={category.id} className="mb-2">
-                  {/* Category Header */}
-                  <button
-                    onClick={() => toggleCategory(category.id)}
-                    className="w-full flex items-center justify-between px-2 py-1.5 hover:bg-neutral-800 rounded transition-colors"
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="text-neutral-400 text-xs">
-                        {expandedCategories.has(category.id) ? "▼" : "▶"}
-                      </span>
-                      <span className="text-base">{category.icon}</span>
-                      <span className="text-white text-xs font-medium">
-                        {category.name}
-                      </span>
-                    </div>
-                    <span className="text-neutral-500 text-xs">
-                      {category.components.length}
-                    </span>
-                  </button>
+        <div className="max-h-[50vh] overflow-y-auto p-2 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-neutral-800 [&::-webkit-scrollbar-thumb]:bg-neutral-600 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb:hover]:bg-neutral-500">
+          {!filteredLibrary.some(category => category.components.length > 0) && (
+            <div className="text-neutral-500 text-center py-4 text-sm">
+              No components found
+            </div>
+          )}
 
-                  {/* Components */}
-                  {expandedCategories.has(category.id) && (
-                    <div className="ml-4 mt-1">
-                      {category.components.map(component => (
-                        <button
-                          key={component.id}
-                          onClick={() => onComponentSelect(component)}
-                          className="w-full flex items-start gap-2 px-2 py-1.5 hover:bg-neutral-800 rounded transition-colors group"
-                        >
-                          <span className="text-base mt-0.5">{component.icon}</span>
-                          <div className="flex-1 text-left">
-                            <div className="text-white text-xs group-hover:text-red-400 transition-colors">
-                              {component.name}
+          {filteredLibrary.map(category => {
+            const isUserCategory = category.id === "user-components";
+            const componentCount = category.components.length;
+
+            return (
+              <div key={category.id} className="mb-2">
+                {/* Category Header */}
+                <button
+                  onClick={() => toggleCategory(category.id)}
+                  className="w-full flex items-center justify-between px-2 py-1.5 hover:bg-neutral-800 rounded transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-neutral-400 text-xs">
+                      {expandedCategories.has(category.id) ? "▼" : "▶"}
+                    </span>
+                    <span className="text-base">{category.icon}</span>
+                    <span className="text-white text-xs font-medium">
+                      {category.name}
+                    </span>
+                  </div>
+                  <span className="text-neutral-500 text-xs">
+                    {componentCount}
+                  </span>
+                </button>
+
+                {/* Components */}
+                {expandedCategories.has(category.id) && (
+                  <div className="ml-4 mt-1">
+                    {isUserCategory ? (
+                      isLoadingUserComponents ? (
+                        <div className="text-neutral-500 text-xs py-2">
+                          Loading user components...
+                        </div>
+                      ) : userComponentsError ? (
+                        <div className="text-red-500 text-xs py-2">
+                          {userComponentsError}
+                        </div>
+                      ) : componentCount === 0 ? (
+                        <div className="text-neutral-500 text-xs py-2">
+                          {searchTerm ? "No user components match this search" : "No user components saved yet"}
+                        </div>
+                      ) : (
+                        category.components.map(component => {
+                          const hasDescription = Boolean(component.description && component.description.trim().length > 0);
+                          const userComponentMetadata = userComponentsById.get(component.userTemplateId ?? component.id);
+                          return (
+                            <div
+                              key={component.id}
+                              className="group flex items-center gap-2 rounded px-2 py-2 transition-colors hover:bg-neutral-800"
+                            >
+                              <button
+                                type="button"
+                                onClick={() => onComponentSelect(component)}
+                                className="flex-1 flex items-center gap-2 text-left focus:outline-none"
+                              >
+                                <span className="text-base">{component.icon}</span>
+                                <div className="flex-1 grid text-left">
+                                  <div
+                                    className={`self-center flex flex-col gap-0.5${hasDescription ? "" : " justify-center min-h-[34px]"}`}
+                                  >
+                                    <div className="text-white text-xs transition-colors group-hover:text-red-400">
+                                      {component.name}
+                                    </div>
+                                    {hasDescription && (
+                                      <div className="text-neutral-500 text-xs">
+                                        {component.description}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  if (!userComponentMetadata) {
+                                    console.warn("Missing metadata for user component", component.id);
+                                    return;
+                                  }
+                                  setDeleteModal({ isOpen: true, component: userComponentMetadata });
+                                }}
+                                className="ml-2 opacity-0 group-hover:opacity-100 transition-opacity transition-colors text-neutral-400 hover:text-red-500 hover:bg-neutral-700 focus:outline-none p-1.5 rounded-lg"
+                                title="Delete user component"
+                                disabled={!userComponentMetadata}
+                              >
+                                <svg
+                                  className="w-4 h-4"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                                  />
+                                </svg>
+                              </button>
                             </div>
-                            <div className="text-neutral-500 text-xs">
-                              {component.description}
-                            </div>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))
-            )}
-          </div>
+                          );
+                        })
+                      )
+                      ) : (
+                        category.components.map(component => {
+                          const hasDescription = Boolean(component.description && component.description.trim().length > 0);
+                          return (
+                            <button
+                              key={component.id}
+                              onClick={() => onComponentSelect(component)}
+                              className="w-full flex items-center gap-2 px-2 py-2 hover:bg-neutral-800 rounded transition-colors group"
+                            >
+                              <span className="text-base">{component.icon}</span>
+                              <div className="flex-1 grid text-left">
+                                <div className="self-center">
+                                  <div className="text-white text-xs group-hover:text-red-400 transition-colors">
+                                    {component.name}
+                                  </div>
+                                  {hasDescription && (
+                                    <div className="text-neutral-500 text-xs">
+                                      {component.description}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </button>
+                          );
+                        })
+                      )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
         </div>
 
       <button
@@ -167,6 +357,18 @@ export default function ProjectPanel({
           <PackageManagerPanel projectId={projectId} />
         </div>
       )}
+
+      <DeleteCheck
+        isOpen={deleteModal.isOpen}
+        onClose={() => setDeleteModal({ isOpen: false, component: null })}
+        onConfirm={handleDeleteComponent}
+        projectName={deleteModal.component?.name ?? ""}
+        isDeleting={isDeletingComponent}
+        title="Delete User Component"
+        description="Do you really want to delete this user component?"
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+      />
     </div>
   );
 }

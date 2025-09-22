@@ -11,6 +11,7 @@ import { modelsComponents } from '../components/nodes/models';
 import { jailbreakComponents } from '../components/nodes/jailbreak';
 import { reportsComponents } from '../components/nodes/reports';
 import { annotationsComponents } from '../components/nodes/annotations';
+import type { UserComponentMetadataDetail } from "../types";
 
 export interface ComponentTemplate {
   id: string;
@@ -21,6 +22,8 @@ export interface ComponentTemplate {
   category?: string;
   nodeType?: "custom" | "start" | "result" | "textInput" | "markdownNote";
   componentType?: string;  // For extensible component system
+  userTemplateId?: string; // Present when sourced from user templates
+  metadata?: UserComponentMetadataDetail; // Stored IO metadata when available
 }
 
 export interface ComponentCategory {
