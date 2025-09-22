@@ -1,0 +1,1004 @@
+{
+  "project_name": "Example Pipelines",
+  "project_description": "A quick-start project with example pipelines.",
+  "project_id": "example_project",
+  "nodes": [
+    {
+      "id": "1",
+      "type": "custom",
+      "position": {
+        "x": 1258.6248871061325,
+        "y": 1077.6702372873692
+      },
+      "data": {
+        "title": "Custom Node",
+        "description": "Blank Python node for custom logic",
+        "file": "1_Custom_Node.py"
+      }
+    },
+    {
+      "id": "2",
+      "type": "custom",
+      "position": {
+        "x": 2681.9025259832383,
+        "y": 1134.4945269772763
+      },
+      "data": {
+        "title": "Custom Node",
+        "description": "Blank Python node for custom logic",
+        "file": "2_Custom_Node.py"
+      }
+    },
+    {
+      "id": "3",
+      "type": "custom",
+      "position": {
+        "x": 1490.825412616261,
+        "y": 1172.5903022477848
+      },
+      "data": {
+        "title": "Custom Node",
+        "description": "Blank Python node for custom logic",
+        "file": "3_Custom_Node.py"
+      }
+    },
+    {
+      "id": "4",
+      "type": "custom",
+      "position": {
+        "x": 1725.3365457909467,
+        "y": 1247.4508618512907
+      },
+      "data": {
+        "title": "Custom Node",
+        "description": "Blank Python node for custom logic",
+        "file": "4_Custom_Node.py"
+      }
+    },
+    {
+      "id": "5",
+      "type": "custom",
+      "position": {
+        "x": 993.5704642408787,
+        "y": 1089.1350814048053
+      },
+      "data": {
+        "title": "Text Input",
+        "description": "Persistent text input for API keys, paths, etc.",
+        "file": "5_Text_Input.py",
+        "componentType": "TextInput",
+        "value": "10",
+        "dimensions": {
+          "width": 129,
+          "height": 62
+        }
+      }
+    },
+    {
+      "id": "7",
+      "type": "custom",
+      "position": {
+        "x": 1228.9357122840393,
+        "y": 1269.8806293629189
+      },
+      "data": {
+        "title": "Text Input",
+        "description": "Persistent text input for API keys, paths, etc.",
+        "file": "7_Text_Input.py",
+        "componentType": "TextInput",
+        "dimensions": {
+          "width": 139.05413759408555,
+          "height": 64.90382054139764
+        },
+        "value": "0.1"
+      }
+    },
+    {
+      "id": "9",
+      "type": "start",
+      "position": {
+        "x": 1029.240133765421,
+        "y": 950.9303445800706
+      },
+      "data": {
+        "title": "Start Node",
+        "description": "Entry point for flow execution",
+        "file": "9_Start_Node.py"
+      }
+    },
+    {
+      "id": "10",
+      "type": "result",
+      "position": {
+        "x": 1827.8342040951202,
+        "y": 1006.5721974528442
+      },
+      "data": {
+        "title": "Result Node",
+        "description": "Display execution results",
+        "file": "10_Result_Node.py",
+        "dimensions": {
+          "width": 558.1772996856364,
+          "height": 214.59876921301023
+        }
+      }
+    },
+    {
+      "id": "12",
+      "type": "result",
+      "position": {
+        "x": 1999.8292785300764,
+        "y": 1269.908660878582
+      },
+      "data": {
+        "title": "Result Node",
+        "description": "Display execution results",
+        "file": "12_Result_Node.py",
+        "dimensions": {
+          "width": 427.0852348561964,
+          "height": 219.48804393047104
+        }
+      }
+    },
+    {
+      "id": "13",
+      "type": "result",
+      "position": {
+        "x": 1779.8062418438521,
+        "y": 617.7760102116392
+      },
+      "data": {
+        "title": "Result Node",
+        "description": "Display execution results",
+        "file": "13_Result_Node.py",
+        "dimensions": {
+          "width": 634.5328186240583,
+          "height": 252.28865549197198
+        }
+      }
+    },
+    {
+      "id": "14",
+      "type": "start",
+      "position": {
+        "x": 1025.7630094362607,
+        "y": 1660.969296722775
+      },
+      "data": {
+        "title": "Start Node",
+        "description": "Entry point for flow execution",
+        "file": "14_Start_Node.py"
+      }
+    },
+    {
+      "id": "15",
+      "type": "custom",
+      "position": {
+        "x": 1236.5217878423937,
+        "y": 1769.6277337137928
+      },
+      "data": {
+        "title": "Custom Node",
+        "description": "Blank Python node for custom logic",
+        "file": "15_Custom_Node.py"
+      }
+    },
+    {
+      "id": "17",
+      "type": "result",
+      "position": {
+        "x": 1063.8259962322904,
+        "y": 2116.802196569543
+      },
+      "data": {
+        "title": "Result Node",
+        "description": "Display execution results",
+        "file": "17_Result_Node.py",
+        "dimensions": {
+          "width": 420,
+          "height": 118
+        }
+      }
+    },
+    {
+      "id": "18",
+      "type": "custom",
+      "position": {
+        "x": 1559.094528771714,
+        "y": 1800.3694993462009
+      },
+      "data": {
+        "title": "Custom Node",
+        "description": "Blank Python node for custom logic",
+        "file": "18_Custom_Node.py"
+      }
+    },
+    {
+      "id": "20",
+      "type": "custom",
+      "position": {
+        "x": 1909.3525127900275,
+        "y": 1799.005580590135
+      },
+      "data": {
+        "title": "Custom Node",
+        "description": "Blank Python node for custom logic",
+        "file": "20_Custom_Node.py"
+      }
+    },
+    {
+      "id": "22",
+      "type": "custom",
+      "position": {
+        "x": 1190.111195296321,
+        "y": 1931.4969331299587
+      },
+      "data": {
+        "title": "Text Input",
+        "description": "Persistent text input for API keys, paths, etc.",
+        "file": "22_Text_Input.py",
+        "componentType": "TextInput",
+        "value": "Python, JavaScript, C++",
+        "dimensions": {
+          "width": 338.7404301339694,
+          "height": 50
+        }
+      }
+    },
+    {
+      "id": "23",
+      "type": "custom",
+      "position": {
+        "x": 982.5227212245559,
+        "y": 1893.5836548325049
+      },
+      "data": {
+        "title": "Text Input",
+        "description": "Persistent text input for API keys, paths, etc.",
+        "file": "23_Text_Input.py",
+        "componentType": "TextInput",
+        "dimensions": {
+          "width": 148,
+          "height": 52
+        },
+        "value": "Seoul"
+      }
+    },
+    {
+      "id": "24",
+      "type": "custom",
+      "position": {
+        "x": 981.0533315816169,
+        "y": 1827.2701622486964
+      },
+      "data": {
+        "title": "Text Input",
+        "description": "Persistent text input for API keys, paths, etc.",
+        "file": "24_Text_Input.py",
+        "componentType": "TextInput",
+        "dimensions": {
+          "width": 149,
+          "height": 52
+        },
+        "value": "1111111125"
+      }
+    },
+    {
+      "id": "25",
+      "type": "custom",
+      "position": {
+        "x": 981.8724425034575,
+        "y": 1767.7596997183014
+      },
+      "data": {
+        "title": "Text Input",
+        "description": "Persistent text input for API keys, paths, etc.",
+        "file": "25_Text_Input.py",
+        "componentType": "TextInput",
+        "dimensions": {
+          "width": 148,
+          "height": 50
+        },
+        "value": "taeyomm"
+      }
+    },
+    {
+      "id": "26",
+      "type": "result",
+      "position": {
+        "x": 2336.87316418862,
+        "y": 1685.3686564285738
+      },
+      "data": {
+        "title": "Result Node",
+        "description": "Display execution results",
+        "file": "26_Result_Node.py",
+        "dimensions": {
+          "width": 264.3688414807453,
+          "height": 198.1009290380068
+        }
+      }
+    },
+    {
+      "id": "28",
+      "type": "result",
+      "position": {
+        "x": 1815.032063892987,
+        "y": 2004.6200897660392
+      },
+      "data": {
+        "title": "Result Node",
+        "description": "Display execution results",
+        "file": "28_Result_Node.py",
+        "dimensions": {
+          "width": 441,
+          "height": 118
+        }
+      }
+    },
+    {
+      "id": "29",
+      "type": "result",
+      "position": {
+        "x": 1681.2154814782116,
+        "y": 1596.076724055063
+      },
+      "data": {
+        "title": "Result Node",
+        "description": "Display execution results",
+        "file": "29_Result_Node.py",
+        "dimensions": {
+          "width": 516.2163632317447,
+          "height": 122.59685833509099
+        }
+      }
+    },
+    {
+      "id": "31",
+      "type": "custom",
+      "position": {
+        "x": 949.0532035411784,
+        "y": 1170.7944177837012
+      },
+      "data": {
+        "title": "Text Input",
+        "description": "Persistent text input for API keys, paths, etc.",
+        "file": "31_Text_Input.py",
+        "componentType": "TextInput",
+        "dimensions": {
+          "width": 169,
+          "height": 80
+        },
+        "value": "20"
+      }
+    },
+    {
+      "id": "32",
+      "type": "start",
+      "position": {
+        "x": 968.5909491293919,
+        "y": 2852.823244002775
+      },
+      "data": {
+        "title": "Start Node",
+        "description": "Entry point for flow execution",
+        "file": "32_Start_Node.py"
+      }
+    },
+    {
+      "id": "33",
+      "type": "custom",
+      "position": {
+        "x": 757.0002499101665,
+        "y": 2976.1777271067012
+      },
+      "data": {
+        "title": "Text Input",
+        "description": "Persistent text input for API keys, paths, etc.",
+        "file": "33_Text_Input.py",
+        "componentType": "TextInput",
+        "value": "/Users/kwontaeyoun/Desktop/generated_redteam_base_queries_v5.csv",
+        "dimensions": {
+          "width": 365.79589707385185,
+          "height": 89.02992385011642
+        }
+      }
+    },
+    {
+      "id": "34",
+      "type": "custom",
+      "position": {
+        "x": 1224.7204456809868,
+        "y": 2935.611050024395
+      },
+      "data": {
+        "title": "CSV Loader",
+        "description": "Load CSV files from local filesystem",
+        "file": "34_CSV_Loader.py"
+      }
+    },
+    {
+      "id": "35",
+      "type": "custom",
+      "position": {
+        "x": 1545.3829400572786,
+        "y": 3063.4426865800124
+      },
+      "data": {
+        "title": "GCG Attack",
+        "description": "Blank Python node for custom logic",
+        "file": "35_Custom_Node.py"
+      }
+    },
+    {
+      "id": "36",
+      "type": "custom",
+      "position": {
+        "x": 1918.3566503159382,
+        "y": 3170.9604185028484
+      },
+      "data": {
+        "title": "ASR",
+        "description": "Blank Python node for custom logic",
+        "file": "36_Custom_Node.py"
+      }
+    },
+    {
+      "id": "37",
+      "type": "result",
+      "position": {
+        "x": 1916.1178680070961,
+        "y": 2709.0203008835615
+      },
+      "data": {
+        "title": "Result Node",
+        "description": "Display execution results",
+        "file": "37_Result_Node.py",
+        "dimensions": {
+          "width": 888,
+          "height": 383
+        }
+      }
+    },
+    {
+      "id": "39",
+      "type": "result",
+      "position": {
+        "x": 1920.144792011467,
+        "y": 2346.9719416281905
+      },
+      "data": {
+        "title": "Result Node",
+        "description": "Display execution results",
+        "file": "39_Result_Node.py",
+        "dimensions": {
+          "width": 900,
+          "height": 346.87654996102896
+        }
+      }
+    },
+    {
+      "id": "42",
+      "type": "custom",
+      "position": {
+        "x": 1262.7668967126383,
+        "y": 4027.5396891555665
+      },
+      "data": {
+        "title": "Text Input",
+        "description": "Persistent text input for API keys, paths, etc.",
+        "file": "42_Text_Input.py",
+        "componentType": "TextInput",
+        "value": "gpt-3.5-turbo",
+        "dimensions": {
+          "width": 221,
+          "height": 56
+        }
+      }
+    },
+    {
+      "id": "43",
+      "type": "custom",
+      "position": {
+        "x": 1081.5983886696408,
+        "y": 3954.4592990556303
+      },
+      "data": {
+        "title": "Text Input",
+        "description": "Persistent text input for API keys, paths, etc.",
+        "file": "43_Text_Input.py",
+        "componentType": "TextInput",
+        "value": "Qwen/Qwen3-235B-A22B-Instruct-2507-tput",
+        "dimensions": {
+          "width": 402,
+          "height": 57
+        }
+      }
+    },
+    {
+      "id": "44",
+      "type": "custom",
+      "position": {
+        "x": 1110.2527003665482,
+        "y": 3893.4991501203176
+      },
+      "data": {
+        "title": "Text Input",
+        "description": "Persistent text input for API keys, paths, etc.",
+        "file": "44_Text_Input.py",
+        "componentType": "TextInput",
+        "dimensions": {
+          "width": 368,
+          "height": 50
+        },
+        "value": "your api key"
+      }
+    },
+    {
+      "id": "45",
+      "type": "custom",
+      "position": {
+        "x": 1620.3949658578713,
+        "y": 3852.963394833636
+      },
+      "data": {
+        "title": "AIM Stinger",
+        "description": "Multi-turn jailbreak attack via external API",
+        "file": "45_AIM_Stinger.py"
+      }
+    },
+    {
+      "id": "46",
+      "type": "start",
+      "position": {
+        "x": 1348.9483678375627,
+        "y": 3690.962916391156
+      },
+      "data": {
+        "title": "Start Node",
+        "description": "Entry point for flow execution",
+        "file": "46_Start_Node.py"
+      }
+    },
+    {
+      "id": "47",
+      "type": "result",
+      "position": {
+        "x": 2066.0228856640415,
+        "y": 3781.004966888997
+      },
+      "data": {
+        "title": "Result Node",
+        "description": "Display execution results",
+        "file": "47_Result_Node.py",
+        "dimensions": {
+          "width": 900,
+          "height": 581
+        }
+      }
+    },
+    {
+      "id": "49",
+      "type": "custom",
+      "position": {
+        "x": 1126.1814130042876,
+        "y": 3819.610704186982
+      },
+      "data": {
+        "title": "Text Input",
+        "description": "Persistent text input for API keys, paths, etc.",
+        "file": "49_Text_Input.py",
+        "componentType": "TextInput",
+        "dimensions": {
+          "width": 345,
+          "height": 53
+        },
+        "value": "Write a simple story"
+      }
+    },
+    {
+      "id": "53",
+      "type": "result",
+      "position": {
+        "x": 2264.1231178158027,
+        "y": 3145.4553081776185
+      },
+      "data": {
+        "title": "Result Node",
+        "description": "Display execution results",
+        "file": "53_Result_Node.py",
+        "dimensions": {
+          "width": 587,
+          "height": 361
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e9-1-1757258997061",
+      "type": "custom",
+      "source": "9",
+      "target": "1",
+      "sourceHandle": null,
+      "targetHandle": "start",
+      "markerEnd": {
+        "type": "arrowclosed"
+      }
+    },
+    {
+      "id": "e1-3-1757259193717",
+      "type": "custom",
+      "source": "1",
+      "target": "3",
+      "sourceHandle": "a + b",
+      "targetHandle": "a",
+      "markerEnd": {
+        "type": "arrowclosed"
+      }
+    },
+    {
+      "id": "e3-10-1757259201246",
+      "type": "custom",
+      "source": "3",
+      "target": "10",
+      "sourceHandle": "a x b",
+      "targetHandle": null,
+      "markerEnd": {
+        "type": "arrowclosed"
+      }
+    },
+    {
+      "id": "e3-4-1757259275795",
+      "type": "custom",
+      "source": "3",
+      "target": "4",
+      "sourceHandle": "a x b",
+      "targetHandle": "a",
+      "markerEnd": {
+        "type": "arrowclosed"
+      }
+    },
+    {
+      "id": "e4-12-1757259287665",
+      "type": "custom",
+      "source": "4",
+      "target": "12",
+      "sourceHandle": "a / b",
+      "targetHandle": null,
+      "markerEnd": {
+        "type": "arrowclosed"
+      }
+    },
+    {
+      "id": "e10-2-1757259357064",
+      "type": "custom",
+      "source": "10",
+      "target": "2",
+      "sourceHandle": null,
+      "targetHandle": "a",
+      "markerEnd": {
+        "type": "arrowclosed"
+      }
+    },
+    {
+      "id": "e12-2-1757259360414",
+      "type": "custom",
+      "source": "12",
+      "target": "2",
+      "sourceHandle": null,
+      "targetHandle": "b",
+      "markerEnd": {
+        "type": "arrowclosed"
+      }
+    },
+    {
+      "id": "e14-15-1757260121515",
+      "type": "custom",
+      "source": "14",
+      "target": "15",
+      "sourceHandle": null,
+      "targetHandle": "start",
+      "markerEnd": {
+        "type": "arrowclosed"
+      }
+    },
+    {
+      "id": "e15-17-1757260183799",
+      "type": "custom",
+      "source": "15",
+      "target": "17",
+      "sourceHandle": "info",
+      "targetHandle": null,
+      "markerEnd": {
+        "type": "arrowclosed"
+      }
+    },
+    {
+      "id": "e25-15-1757260444390",
+      "type": "custom",
+      "source": "25",
+      "target": "15",
+      "sourceHandle": null,
+      "targetHandle": "name",
+      "markerEnd": {
+        "type": "arrowclosed"
+      }
+    },
+    {
+      "id": "e24-15-1757260451990",
+      "type": "custom",
+      "source": "24",
+      "target": "15",
+      "sourceHandle": null,
+      "targetHandle": "age",
+      "markerEnd": {
+        "type": "arrowclosed"
+      }
+    },
+    {
+      "id": "e18-20-1757260900384",
+      "type": "custom",
+      "source": "18",
+      "target": "20",
+      "sourceHandle": "person",
+      "targetHandle": "person",
+      "markerEnd": {
+        "type": "arrowclosed"
+      }
+    },
+    {
+      "id": "e20-26-1757260983537",
+      "type": "custom",
+      "source": "20",
+      "target": "26",
+      "sourceHandle": "profile",
+      "targetHandle": null,
+      "markerEnd": {
+        "type": "arrowclosed"
+      }
+    },
+    {
+      "id": "e22-18-1757262708418",
+      "type": "custom",
+      "source": "22",
+      "target": "18",
+      "sourceHandle": null,
+      "targetHandle": "skills",
+      "markerEnd": {
+        "type": "arrowclosed"
+      }
+    },
+    {
+      "id": "e15-29-1757263452045",
+      "type": "custom",
+      "source": "15",
+      "target": "29",
+      "sourceHandle": "person",
+      "targetHandle": null,
+      "markerEnd": {
+        "type": "arrowclosed"
+      }
+    },
+    {
+      "id": "e18-28-1757264370878",
+      "type": "custom",
+      "source": "18",
+      "target": "28",
+      "sourceHandle": "summary",
+      "targetHandle": null,
+      "markerEnd": {
+        "type": "arrowclosed"
+      }
+    },
+    {
+      "id": "e31-1-1757264398202",
+      "type": "custom",
+      "source": "31",
+      "target": "1",
+      "sourceHandle": null,
+      "targetHandle": "b",
+      "markerEnd": {
+        "type": "arrowclosed"
+      }
+    },
+    {
+      "id": "e15-18-1757265101339",
+      "type": "custom",
+      "source": "15",
+      "target": "18",
+      "sourceHandle": "person",
+      "targetHandle": "person",
+      "markerEnd": {
+        "type": "arrowclosed"
+      }
+    },
+    {
+      "id": "e32-34-1757265518501",
+      "type": "custom",
+      "source": "32",
+      "target": "34",
+      "sourceHandle": null,
+      "targetHandle": "Start",
+      "markerEnd": {
+        "type": "arrowclosed"
+      }
+    },
+    {
+      "id": "e33-34-1757265521818",
+      "type": "custom",
+      "source": "33",
+      "target": "34",
+      "sourceHandle": null,
+      "targetHandle": "file_path",
+      "markerEnd": {
+        "type": "arrowclosed"
+      }
+    },
+    {
+      "id": "e34-35-1757265523634",
+      "type": "custom",
+      "source": "34",
+      "target": "35",
+      "sourceHandle": "data",
+      "targetHandle": "base_queries",
+      "markerEnd": {
+        "type": "arrowclosed"
+      }
+    },
+    {
+      "id": "e35-36-1757265586935",
+      "type": "custom",
+      "source": "35",
+      "target": "36",
+      "sourceHandle": "gcg_results",
+      "targetHandle": "queries",
+      "markerEnd": {
+        "type": "arrowclosed"
+      }
+    },
+    {
+      "id": "e34-39-1757265597318",
+      "type": "custom",
+      "source": "34",
+      "target": "39",
+      "sourceHandle": "data",
+      "targetHandle": null,
+      "markerEnd": {
+        "type": "arrowclosed"
+      }
+    },
+    {
+      "id": "e46-45-1757265779023",
+      "type": "custom",
+      "source": "46",
+      "target": "45",
+      "sourceHandle": null,
+      "targetHandle": "start",
+      "markerEnd": {
+        "type": "arrowclosed"
+      }
+    },
+    {
+      "id": "e44-45-1757265781239",
+      "type": "custom",
+      "source": "44",
+      "target": "45",
+      "sourceHandle": null,
+      "targetHandle": "api_key",
+      "markerEnd": {
+        "type": "arrowclosed"
+      }
+    },
+    {
+      "id": "e43-45-1757265784975",
+      "type": "custom",
+      "source": "43",
+      "target": "45",
+      "sourceHandle": null,
+      "targetHandle": "attacker_model",
+      "markerEnd": {
+        "type": "arrowclosed"
+      }
+    },
+    {
+      "id": "e42-45-1757265791391",
+      "type": "custom",
+      "source": "42",
+      "target": "45",
+      "sourceHandle": null,
+      "targetHandle": "target_model_name",
+      "markerEnd": {
+        "type": "arrowclosed"
+      }
+    },
+    {
+      "id": "e45-47-1757265798490",
+      "type": "custom",
+      "source": "45",
+      "target": "47",
+      "sourceHandle": "results",
+      "targetHandle": null,
+      "markerEnd": {
+        "type": "arrowclosed"
+      }
+    },
+    {
+      "id": "e49-45-1757265843026",
+      "type": "custom",
+      "source": "49",
+      "target": "45",
+      "sourceHandle": null,
+      "targetHandle": "base_query",
+      "markerEnd": {
+        "type": "arrowclosed"
+      }
+    },
+    {
+      "id": "e36-53-1757330611069",
+      "type": "custom",
+      "source": "36",
+      "target": "53",
+      "sourceHandle": "asr_results",
+      "targetHandle": null,
+      "markerEnd": {
+        "type": "arrowclosed"
+      }
+    },
+    {
+      "id": "e7-3-1757831029434",
+      "type": "custom",
+      "source": "7",
+      "target": "3",
+      "sourceHandle": null,
+      "targetHandle": "b",
+      "markerEnd": {
+        "type": "arrowclosed"
+      }
+    },
+    {
+      "id": "e1-13-1757831690743",
+      "type": "custom",
+      "source": "1",
+      "target": "13",
+      "sourceHandle": "a + b",
+      "targetHandle": null,
+      "markerEnd": {
+        "type": "arrowclosed"
+      }
+    },
+    {
+      "id": "e5-1-1757831803644",
+      "type": "custom",
+      "source": "5",
+      "target": "1",
+      "sourceHandle": null,
+      "targetHandle": "a",
+      "markerEnd": {
+        "type": "arrowclosed"
+      }
+    },
+    {
+      "id": "e31-4-1757864490208",
+      "type": "custom",
+      "source": "31",
+      "target": "4",
+      "sourceHandle": null,
+      "targetHandle": "b",
+      "markerEnd": {
+        "type": "arrowclosed"
+      }
+    },
+    {
+      "id": "e35-37-1757867075723",
+      "type": "custom",
+      "source": "35",
+      "target": "37",
+      "sourceHandle": "gcg_results",
+      "targetHandle": null,
+      "markerEnd": {
+        "type": "arrowclosed"
+      }
+    }
+  ]
+}
