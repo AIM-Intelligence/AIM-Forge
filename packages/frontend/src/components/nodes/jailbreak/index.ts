@@ -11,7 +11,7 @@ export const jailbreakComponents = [
   {
     id: "aim-stinger",
     name: "AIM Stinger",
-    description: "Multi-turn jailbreak attack via external API",
+    description: "Multi-turn jailbreak attack using AIM Stinger",
     icon: "🐝",
     template: "jailbreak/aim_stinger",
     nodeType: "custom",

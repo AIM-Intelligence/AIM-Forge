@@ -29,7 +29,7 @@ export interface ComponentTemplate {
 export interface ComponentCategory {
   id: string;
   name: string;
-  icon: string;
+  icon?: string;
   components: ComponentTemplate[];
 }
 
@@ -41,49 +41,41 @@ export const componentLibrary: ComponentCategory[] = [
   {
     id: "flow-control",
     name: "Flow Control",
-    icon: "🎮",
     components: withCategory(flowControlComponents as ComponentTemplate[], "flow-control"),
   },
   {
     id: "params",
     name: "Parameters",
-    icon: "⚙️",
     components: withCategory(paramsComponents as ComponentTemplate[], "params"),
   },
   {
     id: "inputs",
     name: "Inputs",
-    icon: "📥",
     components: withCategory(inputsComponents as ComponentTemplate[], "inputs"),
   },
   {
     id: "dataops",
     name: "Data Operations",
-    icon: "🔄",
     components: withCategory(dataopsComponents as ComponentTemplate[], "dataops"),
   },
   {
     id: "models",
     name: "AI Models",
-    icon: "🤖",
     components: withCategory(modelsComponents as ComponentTemplate[], "models"),
   },
   {
     id: "jailbreak",
     name: "Jailbreak",
-    icon: "⚔️",
     components: withCategory(jailbreakComponents as ComponentTemplate[], "jailbreak"),
   },
   {
     id: "reports",
     name: "Reports",
-    icon: "📊",
     components: withCategory(reportsComponents as ComponentTemplate[], "reports"),
   },
   {
     id: "annotations",
     name: "Annotations",
-    icon: "🗒️",
     components: withCategory(annotationsComponents as ComponentTemplate[], "annotations"),
   },
 ].filter(category => category.components.length > 0); // Only show categories with components

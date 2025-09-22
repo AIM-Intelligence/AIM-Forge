@@ -11,7 +11,7 @@ export const modelsComponents = [
   {
     id: "gpt-model",
     name: "GPT Model",
-    description: "OpenAI GPT 모델 호출 (GPT-3.5/4)",
+    description: "Call OpenAI models with API key",
     icon: "🤖",
     template: "models/gpt_model",
     nodeType: "custom",
@@ -20,7 +20,7 @@ export const modelsComponents = [
   {
     id: "gpt-chat",
     name: "GPT Chat",
-    description: "대화 기록을 유지하는 GPT 모델",
+    description: "Chat GPT that keeps conversation history",
     icon: "💬",
     template: "models/gpt_chat",
     nodeType: "custom",
@@ -29,7 +29,7 @@ export const modelsComponents = [
   {
     id: "claude-model",
     name: "Claude Model",
-    description: "Anthropic Claude 모델 호출",
+    description: "Call Claude models your API key",
     icon: "🧠",
     template: "models/claude_model",
     nodeType: "custom",
@@ -38,7 +38,7 @@ export const modelsComponents = [
   {
     id: "together-model",
     name: "Together AI",
-    description: "오픈소스 모델 호출 (Llama, Mixtral 등)",
+    description: "Call OSS models hosted by Together AI",
     icon: "🤝",
     template: "models/together_model",
     nodeType: "custom",

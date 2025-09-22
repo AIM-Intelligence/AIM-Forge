@@ -149,7 +149,7 @@ export default function ProjectPanel({
   }, [searchTerm, userCategory]);
 
   return (
-    <div className="flex flex-col gap-1 items-center">
+    <div className="flex flex-col gap-1 items-center w-[360px]">
       {/* Header Section */}
       <button
         className="flex flex-row items-center w-full justify-start hover:cursor-pointer"
@@ -218,7 +218,9 @@ export default function ProjectPanel({
                     <span className="text-neutral-400 text-xs">
                       {expandedCategories.has(category.id) ? "▼" : "▶"}
                     </span>
-                    <span className="text-base">{category.icon}</span>
+                    {category.icon && (
+                      <span className="text-base">{category.icon}</span>
+                    )}
                     <span className="text-white text-xs font-medium">
                       {category.name}
                     </span>
@@ -241,7 +243,7 @@ export default function ProjectPanel({
                           {userComponentsError}
                         </div>
                       ) : componentCount === 0 ? (
-                        <div className="text-neutral-500 text-xs py-2">
+                        <div className="text-neutral-500 text-xs py-2 pl-3">
                           {searchTerm ? "No user components match this search" : "No user components saved yet"}
                         </div>
                       ) : (
@@ -259,15 +261,15 @@ export default function ProjectPanel({
                                 className="flex-1 flex items-center gap-2 text-left focus:outline-none"
                               >
                                 <span className="text-base">{component.icon}</span>
-                                <div className="flex-1 grid text-left">
+                                <div className="flex-1 min-w-0 grid text-left">
                                   <div
-                                    className={`self-center flex flex-col gap-0.5${hasDescription ? "" : " justify-center min-h-[34px]"}`}
+                                    className={`min-w-0 self-center flex flex-col gap-0.5${hasDescription ? "" : " justify-center min-h-[34px]"}`}
                                   >
-                                    <div className="text-white text-xs transition-colors group-hover:text-red-400">
+                                    <div className="text-white text-xs transition-colors group-hover:text-red-400 break-words">
                                       {component.name}
                                     </div>
                                     {hasDescription && (
-                                      <div className="text-neutral-500 text-xs">
+                                      <div className="text-neutral-500 text-xs break-words">
                                         {component.description}
                                       </div>
                                     )}
@@ -316,13 +318,13 @@ export default function ProjectPanel({
                               className="w-full flex items-center gap-2 px-2 py-2 hover:bg-neutral-800 rounded transition-colors group"
                             >
                               <span className="text-base">{component.icon}</span>
-                              <div className="flex-1 grid text-left">
-                                <div className="self-center">
-                                  <div className="text-white text-xs group-hover:text-red-400 transition-colors">
+                              <div className="flex-1 min-w-0 grid text-left">
+                                <div className="min-w-0 self-center">
+                                  <div className="text-white text-xs group-hover:text-red-400 transition-colors break-words">
                                     {component.name}
                                   </div>
                                   {hasDescription && (
-                                    <div className="text-neutral-500 text-xs">
+                                    <div className="text-neutral-500 text-xs break-words">
                                       {component.description}
                                     </div>
                                   )}
