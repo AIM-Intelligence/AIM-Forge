@@ -106,7 +106,7 @@ async def get_all_projects():
             "projects": projects
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail={"message": str(e), "type": type(e).__name__})
 
 
 @router.get("/{project_id}")
@@ -168,9 +168,9 @@ async def get_project(project_id: str):
             "project": structure
         }
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail={"message": str(e), "type": type(e).__name__})
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail={"message": str(e), "type": type(e).__name__})
 
 
 @router.post("/make")
@@ -180,9 +180,9 @@ async def make_project(request: CreateProjectRequest):
         result = project_operations.create_project(request.project_name, request.project_description, request.project_id)
         return result
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail={"message": str(e), "type": type(e).__name__})
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail={"message": str(e), "type": type(e).__name__})
 
 
 @router.delete("/delete")

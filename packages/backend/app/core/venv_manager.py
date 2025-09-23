@@ -30,7 +30,10 @@ def _run_uv(command: Sequence[str], error_prefix: str) -> subprocess.CompletedPr
     env = os.environ.copy()
     env.setdefault("UV_NO_CONFIG", "1")
     env.setdefault("UV_PYTHON_DOWNLOADS", "never")
-    cache_dir = Path(__file__).resolve().parents[4] / ".uv-cache"
+    _p = Path(__file__).resolve()
+    _parents = _p.parents
+    _top = _parents[min(4, len(_parents) - 1)]  # Safely pick highest available parent up to index 4
+    cache_dir = _top / ".uv-cache"
     cache_dir.mkdir(exist_ok=True)
     env.setdefault("UV_CACHE_DIR", str(cache_dir))
     try:
@@ -276,7 +279,20 @@ def create(project_path: Path | str, base_requirements: Sequence[str] | None = N
         str(venv_path),
     ]
 
-    _run_uv(command, "가상환경 생성에 실패했습니다")
+    try:
+        _run_uv(command, "가상환경 생성에 실패했습니다")
+    except VenvError as exc:
+        # Fallback: use built-in venv with --copies (safer on Windows host volumes)
+        try:
+            subprocess.run(
+                [sys.executable, "-m", "venv", "--copies", str(venv_path)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        except subprocess.CalledProcessError as exc2:
+            output = exc2.stderr or exc2.stdout or str(exc2)
+            raise VenvError(f"가상환경 생성에 실패했습니다 (fallback venv): {output}") from exc2
 
     _bootstrap_seed_packages(project_path)
 
@@ -365,7 +381,9 @@ def activated(project_path: Path | str):
     bin_dir = _bin_dir(project_path)
     site_dirs = [str(path) for path in site_packages_paths(project_path)]
     backend_root = Path(__file__).resolve().parents[2]
-    repo_root = Path(__file__).resolve().parents[4]
+    _p = Path(__file__).resolve()
+    _parents = _p.parents
+    repo_root = _parents[min(4, len(_parents) - 1)]
     base_prefix = os.path.abspath(sys.base_prefix)
     base_exec_prefix = os.path.abspath(sys.base_exec_prefix)
 
