@@ -276,7 +276,20 @@ def create(project_path: Path | str, base_requirements: Sequence[str] | None = N
         str(venv_path),
     ]
 
-    _run_uv(command, "가상환경 생성에 실패했습니다")
+    try:
+        _run_uv(command, "가상환경 생성에 실패했습니다")
+    except VenvError as exc:
+        # Fallback: use built-in venv with --copies (safer on Windows host volumes)
+        try:
+            subprocess.run(
+                [sys.executable, "-m", "venv", "--copies", str(venv_path)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        except subprocess.CalledProcessError as exc2:
+            output = exc2.stderr or exc2.stdout or str(exc2)
+            raise VenvError(f"가상환경 생성에 실패했습니다 (fallback venv): {output}") from exc2
 
     _bootstrap_seed_packages(project_path)
 

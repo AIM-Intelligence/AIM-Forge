@@ -25,9 +25,18 @@ def get_projects_registry() -> Dict[str, Any]:
     try:
         with open(PROJECTS_REGISTRY_FILE, 'r') as f:
             content = f.read()
-            if not content:
+            # Treat empty or whitespace-only files as empty registry
+            if not content or not content.strip():
                 return {"projects": []}
-            return json.loads(content)
+            data = json.loads(content)
+            # Guard against non-dict JSON (e.g., a stray number like 4)
+            if not isinstance(data, dict):
+                return {"projects": []}
+            projects = data.get("projects", [])
+            # Ensure projects is a list
+            if not isinstance(projects, list):
+                return {"projects": []}
+            return {"projects": projects}
     except (json.JSONDecodeError, IOError) as e:
         print(f"Error reading projects registry: {e}")
         # Return empty registry if file is corrupted
