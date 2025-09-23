@@ -8,6 +8,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl ca-certificates git tini procps gcc \
     && rm -rf /var/lib/apt/lists/*
 
+# Install uv (Python package manager) for virtualenv management
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
+    && ln -s /root/.local/bin/uv /usr/local/bin/uv
+
 # Python dependencies
 WORKDIR /app
 COPY packages/backend/requirements.txt ./requirements.txt
