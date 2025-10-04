@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import asyncio
-from app.api import health, code, project, components, packages, user_components
+from app.api import health, code, project, components, packages, user_components, terminal
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -57,6 +57,7 @@ app.include_router(project.router, prefix="/api/project")
 app.include_router(components.router, prefix="/api/components")
 app.include_router(user_components.router, prefix="/api/user-components")
 app.include_router(packages.router, prefix="/api/project")
+app.include_router(terminal.router, prefix="/api")
 
 if __name__ == "__main__":
     import uvicorn

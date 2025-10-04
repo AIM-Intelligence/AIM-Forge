@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { componentLibrary, type ComponentTemplate } from "../../../config/componentLibrary";
 import PackageManagerPanel from "./PackageManagerPanel";
+import TerminalModal from "../../../components/modal/TerminalModal";
+import ProjectTerminal from "../../../components/terminal/ProjectTerminal";
 import DeleteCheck from "../../../components/modal/DeleteCheck";
 import { userComponentApi } from "../../../utils/api";
 import type { UserComponentMetadata } from "../../../types";
@@ -26,6 +28,7 @@ export default function ProjectPanel({
   const navigate = useNavigate();
   const [isExpanded, setIsExpanded] = useState(false);
   const [isPackagePanelOpen, setIsPackagePanelOpen] = useState(false);
+  const [isTerminalOpen, setIsTerminalOpen] = useState(false);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
     new Set([...componentLibrary.map(cat => cat.id), "user-components"])
   );
@@ -360,6 +363,14 @@ export default function ProjectPanel({
         </div>
       )}
 
+      <button
+        onClick={() => setIsTerminalOpen(true)}
+        className="w-full px-3 py-2 bg-neutral-800 text-white rounded-lg hover:bg-neutral-700 transition-colors flex items-center justify-center gap-2 border border-neutral-600"
+      >
+        <span className="font-medium">Terminal</span>
+        <span className="text-sm" role="img" aria-hidden="true">⌨️</span>
+      </button>
+
       <DeleteCheck
         isOpen={deleteModal.isOpen}
         onClose={() => setDeleteModal({ isOpen: false, component: null })}
@@ -371,6 +382,17 @@ export default function ProjectPanel({
         confirmLabel="Delete"
         cancelLabel="Cancel"
       />
+
+      <TerminalModal
+        isOpen={isTerminalOpen}
+        onClose={() => setIsTerminalOpen(false)}
+        title={`Terminal · ${projectTitle}`}
+      >
+        <ProjectTerminal
+          projectId={projectId}
+          onExit={() => setIsTerminalOpen(false)}
+        />
+      </TerminalModal>
     </div>
   );
 }

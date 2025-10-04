@@ -190,7 +190,7 @@ export default function PackageManagerPanel({ projectId }: PackageManagerPanelPr
           </button>
         </div>
         <p className="text-xs text-neutral-500">
-          여러 패키지를 설치하려면 공백 없이 콤마로 구분하세요.
+          여러 패키지를 설치하려면 공백 없이 콤마(,)로 구분하세요.
         </p>
       </div>
 

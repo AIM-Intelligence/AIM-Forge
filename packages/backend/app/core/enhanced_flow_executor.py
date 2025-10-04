@@ -4,6 +4,7 @@ Enables passing Python objects between nodes without JSON serialization
 """
 
 import json
+import os
 import sys
 import time
 import inspect
@@ -27,6 +28,7 @@ import ast
 from .flow_executor import FlowExecutor
 from .execute_code import execute_python_code
 from . import venv_manager
+from .worker_manager import worker_manager
 
 
 class EnhancedFlowExecutor(FlowExecutor):
@@ -268,10 +270,18 @@ class EnhancedFlowExecutor(FlowExecutor):
                 if handle_name:
                     actual_input = {handle_name: actual_input}
 
-            # 3. Execute node code in the same process
-            result = self._execute_in_process(
-                project_id, node_id, node_data, actual_input
-            )
+            # 3. Execute node code (worker mode when enabled)
+            worker_flag = os.environ.get("USE_PROJECT_WORKER")
+            if worker_flag is None:
+                use_worker = True
+            else:
+                use_worker = worker_flag.strip().lower() in {"1", "true", "yes", "on"}
+            if use_worker:
+                result = self._execute_with_worker(project_id, node_id, node_data, actual_input)
+            else:
+                result = self._execute_in_process(
+                    project_id, node_id, node_data, actual_input
+                )
 
             # 4. Wrap output (store objects and return references if needed)
             wrapped_output = self._wrap_output(project_id, node_id, result)
@@ -396,6 +406,24 @@ class EnhancedFlowExecutor(FlowExecutor):
             raise RuntimeError(
                 f"Virtual environment not ready for project '{project_id}': {exc}"
             ) from exc
+
+    def _execute_with_worker(self, project_id: str, node_id: str, node_data: Dict, input_data: Any) -> Any:
+        """Execute node via per-project worker if enabled by env flag."""
+        # Determine the file name similarly to in-process path
+        title = node_data.get("data", {}).get("title", f"Node_{node_id}")
+        sanitized_title = "".join(c if c.isalnum() or c == "_" else "_" for c in title)
+        file_name = node_data.get("data", {}).get("file") or f"{node_id}_{sanitized_title}.py"
+
+        resp = worker_manager.exec(project_id, file_name=file_name, input_data=input_data or {})
+        if not isinstance(resp, dict):
+            raise RuntimeError("Invalid worker response")
+        if not resp.get("ok"):
+            err = str(resp.get("error", "Worker execution failed"))
+            tb = resp.get("traceback")
+            if tb:
+                raise RuntimeError(f"{err}\n{tb}")
+            raise RuntimeError(err)
+        return resp.get("output")
 
     def _create_safe_namespace(self, input_data: Any) -> Dict:
         """Create a safe execution namespace with limited builtins"""

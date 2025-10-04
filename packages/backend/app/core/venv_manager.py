@@ -75,6 +75,42 @@ def _pip_logs_dir(project_path: Path) -> Path:
     return path
 
 
+def _ensure_pip_entrypoints(project_path: Path) -> None:
+    """Make sure generic pip launchers exist inside the virtualenv."""
+
+    python_path = python_bin(project_path)
+    bin_dir = _bin_dir(project_path)
+
+    if sys.platform == "win32":  # pragma: no cover - windows only
+        script_content = f"@echo off\r\n\"{python_path}\" -m pip %*\r\n"
+        for suffix in ("pip.cmd", "pip.bat"):
+            candidate = bin_dir / suffix
+            if not candidate.exists():
+                candidate.write_text(script_content, encoding="utf-8")
+        return
+
+    pip_path = bin_dir / "pip"
+    if not pip_path.exists():
+        pip_path.write_text(
+            "#!/usr/bin/env sh\n"
+            f'"{python_path}" -m pip "$@"\n',
+            encoding="utf-8",
+        )
+        os.chmod(pip_path, 0o755)
+
+    pip3_path = bin_dir / "pip3"
+    if not pip3_path.exists():
+        try:
+            pip3_path.symlink_to("pip")
+        except (OSError, NotImplementedError):
+            pip3_path.write_text(
+                "#!/usr/bin/env sh\n"
+                f'"{python_path}" -m pip "$@"\n',
+                encoding="utf-8",
+            )
+            os.chmod(pip3_path, 0o755)
+
+
 def write_pip_log(
     project_path: Path | str,
     action: str,
@@ -247,6 +283,10 @@ def execution_env(project_path: Path | str, extra_env: Optional[Dict[str, str]] 
     env["VIRTUAL_ENV"] = str(_venv_path(project_path))
     if extra_env:
         env.update(extra_env)
+    try:
+        _ensure_pip_entrypoints(project_path)
+    except VenvError:
+        pass
     return env
 
 
@@ -345,6 +385,8 @@ def _bootstrap_seed_packages(project_path: Path) -> None:
     except subprocess.CalledProcessError as exc:
         output = exc.stderr or exc.stdout or str(exc)
         raise VenvError(f"pip 초기화에 실패했습니다: {output}") from exc
+
+    _ensure_pip_entrypoints(project_path)
 
 
 def delete(project_path: Path | str) -> None:

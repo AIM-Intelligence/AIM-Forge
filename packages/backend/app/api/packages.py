@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from typing import List, Union
 
 from ..core import project_operations, venv_manager
+from ..core.worker_manager import worker_manager
 
 router = APIRouter()
 
@@ -55,6 +56,12 @@ async def install_packages(project_id: str, request: PackageRequest):
             },
         )
         metadata = venv_manager.read_env_metadata(project_path)
+        try:
+            worker_manager.restart(project_id)
+            restart_status = "restarted"
+        except Exception as exc:  # pragma: no cover - best effort
+            restart_status = f"failed: {exc}"
+
         return {
             "success": True,
             "packages": package_list,
@@ -62,6 +69,7 @@ async def install_packages(project_id: str, request: PackageRequest):
             "stderr": result.stderr,
             "log_path": log_path,
             "metadata": metadata,
+            "worker_restart": restart_status,
         }
     except venv_manager.VenvError as exc:
         log_path = venv_manager.write_pip_log(
@@ -109,6 +117,12 @@ async def uninstall_packages(project_id: str, request: PackageRequest):
             },
         )
         metadata = venv_manager.read_env_metadata(project_path)
+        try:
+            worker_manager.restart(project_id)
+            restart_status = "restarted"
+        except Exception as exc:  # pragma: no cover
+            restart_status = f"failed: {exc}"
+
         return {
             "success": True,
             "packages": package_list,
@@ -116,6 +130,7 @@ async def uninstall_packages(project_id: str, request: PackageRequest):
             "stderr": result.stderr,
             "log_path": log_path,
             "metadata": metadata,
+            "worker_restart": restart_status,
         }
     except venv_manager.VenvError as exc:
         log_path = venv_manager.write_pip_log(
